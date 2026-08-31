@@ -1,7 +1,7 @@
 # Face Identification & Blockchain Verification Pipeline — Design
 
 - **Project**: HH Goa 2026 Shortlisting Task 3
-- **Date**: 2026-08-31
+- **Date**: 2026-08-31.
 - **Deadline**: 2026-09-07, 23:59
 - **Status**: Approved — ready for implementation planning
 - **Working name**: `facechain`
@@ -16,15 +16,15 @@ social media, and verifies that discovered data using a blockchain — end to en
 The task states three hard technical requirements, one hard deliverable constraint, and two
 submission artifacts:
 
-| # | Requirement | Where it is satisfied |
-|---|---|---|
-| R1 | Detect and encode a face from an input image | §4.1 Detect, §4.2 Encode |
-| R2 | Use the face to search the web and find at least one **real** matching social media post, via a **genuine search step** — not a hardcoded or pre-picked result | §4.5–4.6 Search, §4.7 Face verification |
-| R3 | Upload the post (or a hash/fingerprint) to a blockchain to create a verifiable, tamper-evident record, and demonstrate **re-verifying** the data against the on-chain record | §6 Contract, §7 Re-verification |
-| C1 | No website required | CLI-only; see §4.10, §8 |
-| C2 | GitHub repo with README covering what it does, how to run it, which blockchain, and known limitations | §9 Repository layout, §15 Ethics & limitations |
-| S1 | Screen recording of the pipeline working end to end | §12 Day 6 |
-| S2 | Submission form, **no resubmissions** | §12 Day 7 |
+| #  | Requirement                                                                                                                                                                       | Where it is satisfied                            |
+| -- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| R1 | Detect and encode a face from an input image                                                                                                                                      | §4.1 Detect, §4.2 Encode                       |
+| R2 | Use the face to search the web and find at least one**real** matching social media post, via a **genuine search step** — not a hardcoded or pre-picked result        | §4.5–4.6 Search, §4.7 Face verification       |
+| R3 | Upload the post (or a hash/fingerprint) to a blockchain to create a verifiable, tamper-evident record, and demonstrate**re-verifying** the data against the on-chain record | §6 Contract, §7 Re-verification                |
+| C1 | No website required                                                                                                                                                               | CLI-only; see §4.10, §8                        |
+| C2 | GitHub repo with README covering what it does, how to run it, which blockchain, and known limitations                                                                             | §9 Repository layout, §15 Ethics & limitations |
+| S1 | Screen recording of the pipeline working end to end                                                                                                                               | §12 Day 6                                       |
+| S2 | Submission form,**no resubmissions**                                                                                                                                        | §12 Day 7                                       |
 
 ### Non-goals
 
@@ -336,10 +336,10 @@ Design notes:
 
 ### Networks
 
-| Name | Provider | Purpose |
-|---|---|---|
-| `local` | `eth-tester` (in-process EVM) | Development, tests, offline demo fallback |
-| `base-sepolia` | Base Sepolia RPC | Public testnet deploy shown in the recording |
+| Name             | Provider                        | Purpose                                      |
+| ---------------- | ------------------------------- | -------------------------------------------- |
+| `local`        | `eth-tester` (in-process EVM) | Development, tests, offline demo fallback    |
+| `base-sepolia` | Base Sepolia RPC                | Public testnet deploy shown in the recording |
 
 Base Sepolia is chosen for free faucet access, ~2s blocks, and a public Basescan explorer link.
 Switching to Ethereum Sepolia or Polygon Amoy is a one-line `Config` change; nothing in the code
@@ -398,21 +398,21 @@ because it is the only part of the demo that actually proves tamper-evidence.
 
 ## 8. Tech stack
 
-| Layer | Choice | Rationale |
-|---|---|---|
-| Language | Python 3.11, `uv` | One language end to end; `uv` already present on the machine |
-| Face detection + encoding | InsightFace `buffalo_l` (SCRFD + ArcFace r100) on onnxruntime | Prebuilt arm64 wheels; 512-d embeddings; fully local; no API key; ~50ms/face |
-| Image I/O | `opencv-python-headless`, `numpy`, `Pillow` | headless avoids macOS GUI dylib issues |
-| HTTP | `httpx` | Timeouts and retries are first-class |
-| Reverse image search | SerpAPI `google_lens` | Official structured endpoint; no scraping, no anti-bot fight, no ToS problem |
-| Temporary image hosting | imgbb API | Lens requires a public URL for the query image |
-| Contract language | Solidity 0.8.24 | — |
-| Contract toolchain | `py-solc-x` | No Foundry, no Hardhat, no Node toolchain. `solc` is already installed |
-| Chain client | `web3.py` | Identical code path for local and testnet; provider swap only |
-| Local chain | `eth-tester` via `web3[tester]` | In-process EVM, no external binary, instant test runs |
-| Public chain | Base Sepolia | Free faucet, fast blocks, Basescan explorer link |
-| CLI / presentation | Typer + Rich | The recording is the only UI; Rich tables and progress make it legible |
-| Tests | pytest | Per project standards |
+| Layer                     | Choice                                                         | Rationale                                                                    |
+| ------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Language                  | Python 3.11,`uv`                                             | One language end to end;`uv` already present on the machine                |
+| Face detection + encoding | InsightFace`buffalo_l` (SCRFD + ArcFace r100) on onnxruntime | Prebuilt arm64 wheels; 512-d embeddings; fully local; no API key; ~50ms/face |
+| Image I/O                 | `opencv-python-headless`, `numpy`, `Pillow`              | headless avoids macOS GUI dylib issues                                       |
+| HTTP                      | `httpx`                                                      | Timeouts and retries are first-class                                         |
+| Reverse image search      | SerpAPI`google_lens`                                         | Official structured endpoint; no scraping, no anti-bot fight, no ToS problem |
+| Temporary image hosting   | imgbb API                                                      | Lens requires a public URL for the query image                               |
+| Contract language         | Solidity 0.8.24                                                | —                                                                           |
+| Contract toolchain        | `py-solc-x`                                                  | No Foundry, no Hardhat, no Node toolchain.`solc` is already installed      |
+| Chain client              | `web3.py`                                                    | Identical code path for local and testnet; provider swap only                |
+| Local chain               | `eth-tester` via `web3[tester]`                            | In-process EVM, no external binary, instant test runs                        |
+| Public chain              | Base Sepolia                                                   | Free faucet, fast blocks, Basescan explorer link                             |
+| CLI / presentation        | Typer + Rich                                                   | The recording is the only UI; Rich tables and progress make it legible       |
+| Tests                     | pytest                                                         | Per project standards                                                        |
 
 ### Rejected alternatives
 
@@ -514,15 +514,15 @@ of plain `verify`. The CLI distinguishes these.
 
 Target 80% coverage. External services are mocked; internal modules are not.
 
-| Test | Type | What it pins down |
-|---|---|---|
-| `test_similarity` | unit | Cosine is correct, symmetric, and bounded; identical vectors score 1.0 |
-| `test_evidence` | unit, golden file | Canonical JSON is byte-stable across key reordering and across runs; the golden hash does not drift |
-| `test_candidates` | unit | Domain allowlist admits real social URLs, rejects news/stock/aggregator hosts, de-duplicates |
-| `test_registry` | integration, `eth-tester` | Deploy, anchor, read back; `count()` increments; empty hash and empty URL revert |
-| `test_verify_tamper` | integration, `eth-tester` | Round-trip verify passes; a one-byte mutation produces `EvidenceIntegrityError` |
-| `test_pipeline_no_match` | integration, mocked search | Zero verified candidates raises `NoVerifiedMatchError` rather than anchoring anything |
-| `test_search_error` | unit, mocked httpx | A provider 500 raises `SearchProviderError` and is not reported as an empty result |
+| Test                       | Type                       | What it pins down                                                                                   |
+| -------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------- |
+| `test_similarity`        | unit                       | Cosine is correct, symmetric, and bounded; identical vectors score 1.0                              |
+| `test_evidence`          | unit, golden file          | Canonical JSON is byte-stable across key reordering and across runs; the golden hash does not drift |
+| `test_candidates`        | unit                       | Domain allowlist admits real social URLs, rejects news/stock/aggregator hosts, de-duplicates        |
+| `test_registry`          | integration,`eth-tester` | Deploy, anchor, read back;`count()` increments; empty hash and empty URL revert                   |
+| `test_verify_tamper`     | integration,`eth-tester` | Round-trip verify passes; a one-byte mutation produces`EvidenceIntegrityError`                    |
+| `test_pipeline_no_match` | integration, mocked search | Zero verified candidates raises`NoVerifiedMatchError` rather than anchoring anything              |
+| `test_search_error`      | unit, mocked httpx         | A provider 500 raises`SearchProviderError` and is not reported as an empty result                 |
 
 `test_evidence` and `test_verify_tamper` are the two that protect the actual claim being made to
 the judges. They are written first.
@@ -533,15 +533,15 @@ the judges. They are written first.
 
 Today is 2026-08-31. Deadline is 2026-09-07, 23:59.
 
-| Day | Date | Goal | Exit gate |
-|---|---|---|---|
-| 1 | Aug 31 | **Spike only (~45 min).** `uv venv`; verify insightface + onnxruntime wheels install clean on arm64; one throwaway script: crop a face, upload to imgbb, hit SerpAPI Lens, print raw results | **Does Lens return actual social-media post URLs for the chosen public figure, or only news/stock/aggregator pages?** |
-| 2 | Sep 1 | Thin end-to-end slice on `eth-tester` with a stubbed candidate; `test_evidence` and `test_verify_tamper` written first | `run` completes; `verify` passes; tamper fails |
-| 3 | Sep 2 | Real search leg: uploader, lens, candidates. Stub deleted | A real social post URL reaches the pipeline |
-| 4 | Sep 3 | Step-4 face verification, ranking, threshold sanity-check per §5.4 | Real cosine score on a real candidate |
-| 5 | Sep 4 | Base Sepolia deploy; README; tests to 80% | Live Basescan transaction link |
-| 6 | Sep 5 | Record end to end; include the secondary self-face pass showing the low-confidence path | Video uploaded and link verified working |
-| 7 | Sep 6–7 | Buffer, final repo review, submit | Submitted |
+| Day | Date     | Goal                                                                                                                                                                                                 | Exit gate                                                                                                                   |
+| --- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Aug 31   | **Spike only (~45 min).** `uv venv`; verify insightface + onnxruntime wheels install clean on arm64; one throwaway script: crop a face, upload to imgbb, hit SerpAPI Lens, print raw results | **Does Lens return actual social-media post URLs for the chosen public figure, or only news/stock/aggregator pages?** |
+| 2   | Sep 1    | Thin end-to-end slice on`eth-tester` with a stubbed candidate; `test_evidence` and `test_verify_tamper` written first                                                                          | `run` completes; `verify` passes; tamper fails                                                                          |
+| 3   | Sep 2    | Real search leg: uploader, lens, candidates. Stub deleted                                                                                                                                            | A real social post URL reaches the pipeline                                                                                 |
+| 4   | Sep 3    | Step-4 face verification, ranking, threshold sanity-check per §5.4                                                                                                                                  | Real cosine score on a real candidate                                                                                       |
+| 5   | Sep 4    | Base Sepolia deploy; README; tests to 80%                                                                                                                                                            | Live Basescan transaction link                                                                                              |
+| 6   | Sep 5    | Record end to end; include the secondary self-face pass showing the low-confidence path                                                                                                              | Video uploaded and link verified working                                                                                    |
+| 7   | Sep 6–7 | Buffer, final repo review, submit                                                                                                                                                                    | Submitted                                                                                                                   |
 
 Day 1 is a genuine gate, not a formality. Everything except the search leg is deterministic local
 work that will certainly come together; the search leg is the only part not under our control, so
@@ -565,14 +565,14 @@ Two days of buffer are deliberate. The task allows no resubmissions.
 
 ## 14. Risks and mitigations
 
-| # | Risk | Mitigation |
-|---|---|---|
-| R1 | Google Lens accepts a URL, not raw bytes — the face crop must be hosted before it can be searched. This is the moving part most likely to be underestimated. | `search.uploader` exists solely for this and is validated on Day 1, before anything is built on top of it |
-| R2 | Lens may return zero social URLs for a bare face crop; crops are low-context and Lens sometimes prefers whole scenes | Query both the crop and the full photo and union the candidates. Step-4 face verification remains the arbiter, so the embedding stays load-bearing either way. If results are still thin, add a TinEye fallback on Day 4 |
-| R3 | Social platforms may block hotlinked image fetches (403 on Instagram), breaking step-4 re-embedding | Browser User-Agent and Referer headers first; a Playwright fallback for image retrieval only if needed. `CandidateFetchError` skips the candidate rather than failing the run |
-| R4 | Testnet RPC flakiness or faucet exhaustion on recording day | The `local` eth-tester path is kept working throughout and recorded as a fallback. The task explicitly permits a local or simulated chain |
-| R5 | R2 states results must not be hardcoded, and there are no resubmissions | The Day 2 stub is deleted on Day 3 and its removal is verified in the final repo review. No fixture in the shipped code contains a pre-picked result |
-| R6 | Model download (~300MB for `buffalo_l`) on first run could stall a live demo | Models are pre-warmed before recording; `models/` is git-ignored and the README documents the first-run download |
+| #  | Risk                                                                                                                                                          | Mitigation                                                                                                                                                                                                               |
+| -- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1 | Google Lens accepts a URL, not raw bytes — the face crop must be hosted before it can be searched. This is the moving part most likely to be underestimated. | `search.uploader` exists solely for this and is validated on Day 1, before anything is built on top of it                                                                                                              |
+| R2 | Lens may return zero social URLs for a bare face crop; crops are low-context and Lens sometimes prefers whole scenes                                          | Query both the crop and the full photo and union the candidates. Step-4 face verification remains the arbiter, so the embedding stays load-bearing either way. If results are still thin, add a TinEye fallback on Day 4 |
+| R3 | Social platforms may block hotlinked image fetches (403 on Instagram), breaking step-4 re-embedding                                                           | Browser User-Agent and Referer headers first; a Playwright fallback for image retrieval only if needed.`CandidateFetchError` skips the candidate rather than failing the run                                           |
+| R4 | Testnet RPC flakiness or faucet exhaustion on recording day                                                                                                   | The`local` eth-tester path is kept working throughout and recorded as a fallback. The task explicitly permits a local or simulated chain                                                                               |
+| R5 | R2 states results must not be hardcoded, and there are no resubmissions                                                                                       | The Day 2 stub is deleted on Day 3 and its removal is verified in the final repo review. No fixture in the shipped code contains a pre-picked result                                                                     |
+| R6 | Model download (~300MB for`buffalo_l`) on first run could stall a live demo                                                                                 | Models are pre-warmed before recording;`models/` is git-ignored and the README documents the first-run download                                                                                                        |
 
 ---
 
