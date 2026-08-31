@@ -273,6 +273,10 @@ def anchor(
 
 def main() -> None:  # pragma: no cover
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    if os.environ.get("FACECHAIN_VERBOSE"):
+        from .face.models import set_verbose
+
+        set_verbose(True)
     app()
 
 

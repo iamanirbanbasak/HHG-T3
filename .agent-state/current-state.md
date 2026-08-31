@@ -1,86 +1,76 @@
 # Project State
 
-> Single source of truth for cross-agent handoff. **Never rely on conversational memory for
-> project-critical state.** Another agent with no history must be able to resume from this file
-> alone. Update it at the end of every milestone.
-
-**Last updated:** 2026-09-01 (initial — no milestones executed yet)
+**Last updated:** 2026-09-01
 
 ---
 
 ## Current milestone
 
-`M00 — Search Feasibility Spike` — **not started**
-
-Blocked pending user answers to **AMB-05** (which public figure is the demo subject) and
-**AMB-03** (does an imgbb API key exist). Both must be answered before M00 begins.
+M07 (search integration) — **BLOCKED on a valid SerpAPI key.**
 
 ## Completed milestones
 
-None.
+| Milestone | Status | Evidence |
+|---|---|---|
+| M00 environment + upload gate | PARTIAL PASS | InsightFace runs on arm64 (RK-04 closed); imgbb upload verified live (RK-02 closed). **Lens half not run** — key rejected. |
+| M01 repository foundation | PASS | config, errors, scaffold; 15 tests |
+| M02 face detection | PASS | real SCRFD; 6 faces on fixture, det_score 0.92 |
+| M03 embedding + similarity | PASS | 512-d L2-normalised; same-face 1.0000, different-face 0.0645 |
+| M04 evidence + hashing | PASS | canonical JSON, golden hash, 25 tests |
+| M05 contract + local chain | PASS | solc 0.8.24, eth-tester, 12 tests |
+| M08 candidate filtering | PASS | allowlist, dedupe, SSRF, size caps |
+| M09 candidate verification | PASS | independent re-embedding; anti-cheat test in place |
+| M10 end-to-end + verify/tamper | PASS | full run anchored + verified + tampered on local chain |
+| M11 CLI | PASS | six commands, exit codes, output discipline |
+| M16 regression + import graph | PASS | 184 tests, 80% coverage, offline |
 
-## Current branch / state
+## Not started
 
-`main`. Repository contains `docs/` and `agent-prompts/` only. No `src/`, no `pyproject.toml`.
+M06 (public testnet — needs funded wallet, AMB-02), M12 (calibration — needs AMB-01),
+M13 (performance), M14 (full reliability matrix), M15 (security milestone),
+M17 (recording), M18 (submission).
 
-## Implemented components
+## Test status
 
-None. Target set is frozen in `02-architecture-execution.md` §1:
-
-```text
-face.detect  face.embed  face.similarity
-search.uploader  search.lens  search.candidates
-pipeline  evidence
-chain.compile  chain.deploy  chain.registry
-cli
-config  errors
+```
+184 passed, 80% coverage, fully offline
 ```
 
 ## Known failures
 
-None — nothing built yet.
+None in the suite.
 
 ## Known risks
 
-See `00-requirements-intelligence.md` §2.5 for all eleven. Live now:
-
-- **RK-01** Lens may return no social URLs for a face crop — unresolved until M00
-- **RK-02** imgbb hop unvalidated — unresolved until M00
-- **RK-04** InsightFace/onnxruntime arm64 wheels unverified — unresolved until M00
-- **RK-10** 19 milestones in 7 days — mitigated by the must-ship split in `10-deadline-plan.md`
+- **RK-01 UNRESOLVED — the highest-uncertainty item in the project.** Whether Google Lens returns
+  social-media URLs for a bare face crop has never been tested, because no valid SerpAPI key is
+  available. Everything downstream is built and tested against injected fakes.
+- RK-05 public testnet unexercised; `local` path green as fallback.
+- RK-09 model pack is now cached locally (~281MB), so demo cold-start is mitigated.
 
 ## Assumptions
 
-- The design spec `docs/superpowers/specs/2026-08-31-face-chain-design.md` is authoritative and
-  approved.
-- Python 3.11 on arm64 macOS; `uv` and `solc` present; Node not required.
-- The demo subject is a public figure (primary) with the author's own face as the negative-path
-  secondary run.
+- Provider injection replaces the spec's dev-stub approach, so no stub exists in `src/` to delete
+  (RK-06 dissolved rather than managed).
+- `w600k_r50` recorded as the embedder, not the spec's `arcface_r100_glint360k`: buffalo_l ships
+  r50 and the bundle must name the model that actually ran.
 
 ## Open decisions
 
 | ID | Question | Blocks |
 |---|---|---|
-| AMB-01 | Source and consent basis of the threshold-calibration face set | M12 |
+| **NEW** | A valid SerpAPI key, or a decision to use a different provider | **M07, and RK-01** |
+| AMB-01 | Consent basis for the calibration face set | M12 |
 | AMB-02 | Base Sepolia wallet funding and key custody | M06 |
-| AMB-03 | Does an imgbb account/API key exist | **M00** |
 | AMB-04 | What the demo shows if the negative path produces a match | M17 |
-| AMB-05 | Which public figure is the demo subject | **M00** |
-| AMB-06 | How post text is obtained when Lens returns only a page URL | M08 |
-
-## Test status
-
-No test suite exists.
-
-## Performance measurements
-
-None.
+| AMB-05 | Which public figure is the demo subject | M17 |
+| AMB-06 | RESOLVED — post_text records provider-returned title/source, labelled as such | — |
 
 ## Accuracy measurements
 
-None. `tau = 0.45` is the spec default and is **uncalibrated** until M12.
+`tau = 0.45` **uncalibrated**. Smoke check only: same-face cosine 1.0000, different-face 0.0645.
 
 ## Next milestone
 
-`M00` — ask AMB-03 and AMB-05 together, then run the spike. Do not proceed to M01 on a `BLOCKED`
-M00 gate without a user decision.
+M07 once a working search key exists. Until then the search leg cannot be exercised live and
+RK-01 stays open.

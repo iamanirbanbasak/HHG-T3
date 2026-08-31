@@ -64,13 +64,31 @@ def test_evidence_does_not_import_face_or_search():
     assert "face" not in imports and "search" not in imports
 
 
+def _reads_environment(path: Path) -> bool:
+    """True if the file actually accesses the environment.
+
+    Checked via AST rather than a text grep: a comment or docstring that mentions os.environ --
+    for instance one explaining why a module must not touch it -- is documentation, not a
+    violation.
+    """
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Attribute) and node.attr == "environ":
+            if isinstance(node.value, ast.Name) and node.value.id == "os":
+                return True
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr in ("getenv", "putenv") and isinstance(node.func.value, ast.Name):
+                if node.func.value.id == "os":
+                    return True
+    return False
+
+
 def test_only_config_reads_the_environment():
+    # cli.py is permitted: it loads .env into the environment at the boundary before load_config.
     offenders = [
         f.relative_to(SRC).as_posix()
         for f in SRC.rglob("*.py")
-        if "os.environ" in f.read_text() and f.name not in ("config.py", "cli.py")
+        if _reads_environment(f) and f.name not in ("config.py", "cli.py")
     ]
-    # cli.py is permitted: it loads .env into the environment at the boundary before load_config.
     assert offenders == [], f"environment access outside config.py: {offenders}"
 
 
