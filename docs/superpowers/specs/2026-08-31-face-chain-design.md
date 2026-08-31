@@ -1,7 +1,7 @@
 # Face Identification & Blockchain Verification Pipeline — Design
 
 - **Project**: HH Goa 2026 Shortlisting Task 3
-- **Date**: 2026-08-31.
+- **Date**: 2026-08-31
 - **Deadline**: 2026-09-07, 23:59
 - **Status**: Approved — ready for implementation planning
 - **Working name**: `facechain`
@@ -19,12 +19,12 @@ submission artifacts:
 | #  | Requirement                                                                                                                                                                       | Where it is satisfied                            |
 | -- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | R1 | Detect and encode a face from an input image                                                                                                                                      | §4.1 Detect, §4.2 Encode                       |
-| R2 | Use the face to search the web and find at least one**real** matching social media post, via a **genuine search step** — not a hardcoded or pre-picked result        | §4.5–4.6 Search, §4.7 Face verification       |
-| R3 | Upload the post (or a hash/fingerprint) to a blockchain to create a verifiable, tamper-evident record, and demonstrate**re-verifying** the data against the on-chain record | §6 Contract, §7 Re-verification                |
+| R2 | Use the face to search the web and find at least one **real** matching social media post, via a **genuine search step** — not a hardcoded or pre-picked result        | §4.5–4.6 Search, §4.7 Face verification       |
+| R3 | Upload the post (or a hash/fingerprint) to a blockchain to create a verifiable, tamper-evident record, and demonstrate **re-verifying** the data against the on-chain record | §6 Contract, §7 Re-verification                |
 | C1 | No website required                                                                                                                                                               | CLI-only; see §4.10, §8                        |
 | C2 | GitHub repo with README covering what it does, how to run it, which blockchain, and known limitations                                                                             | §9 Repository layout, §15 Ethics & limitations |
 | S1 | Screen recording of the pipeline working end to end                                                                                                                               | §12 Day 6                                       |
-| S2 | Submission form,**no resubmissions**                                                                                                                                        | §12 Day 7                                       |
+| S2 | Submission form, **no resubmissions**                                                                                                                                        | §12 Day 7                                       |
 
 ### Non-goals
 
