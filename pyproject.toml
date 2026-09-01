@@ -15,6 +15,7 @@ dependencies = [
     "web3[tester]>=6.15",
     "py-solc-x>=2.0",
     "eth-utils>=4.0",
+    "pillow-heif>=0.16",
 ]
 
 [project.optional-dependencies]

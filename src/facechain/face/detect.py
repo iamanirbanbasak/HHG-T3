@@ -40,10 +40,38 @@ def load_image(path: Path) -> np.ndarray:
 
     img = cv2.imread(str(p), cv2.IMREAD_COLOR)
     if img is None:
+        img = _decode_via_pillow(p)  # HEIC/HEIF and anything else OpenCV declines
+    if img is None:
         raise FaceChainError("could not decode image", {"path": str(p)})
     if img.shape[0] * img.shape[1] > MAX_PIXELS:
         raise FaceChainError("image too large", {"path": str(p), "shape": str(img.shape)})
     return img
+
+
+def _decode_via_pillow(path: Path):
+    """Fallback decoder for formats OpenCV will not read -- notably HEIC from Apple devices."""
+    try:
+        import numpy as _np
+        from PIL import Image
+
+        try:
+            import pillow_heif
+
+            pillow_heif.register_heif_opener()
+        except ImportError:
+            pass
+
+        with Image.open(path) as im:
+            rgb = im.convert("RGB")
+            return cv2_bgr(_np.array(rgb))
+    except Exception:
+        return None
+
+
+def cv2_bgr(arr):
+    import cv2
+
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
 def detect_faces(image: np.ndarray) -> list[DetectedFace]:

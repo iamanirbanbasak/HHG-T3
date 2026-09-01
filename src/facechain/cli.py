@@ -174,6 +174,26 @@ def run(
             f"record id      {rid}\n"
             f"run dir        {result.run_dir}",
             title="Anchored on-chain", border_style="cyan"))
+
+        # An in-process `local` chain does not survive between CLI invocations, so verification
+        # runs here rather than as a separate command. On a public network the standalone
+        # `facechain verify` works as well.
+        from .verify import verify_record
+
+        ok = verify_record(reg, rid, result.run_dir, cfg)
+        console.print(Panel(
+            f"on-chain    {_short(ok.onchain_hash)}   (block {w3.eth.block_number} - {cfg.network})\n"
+            f"recomputed  {_short(ok.recomputed_hash)}\n\n"
+            + ("[bold green]MATCH  record intact" if ok.matches else "[bold red]MISMATCH"),
+            title="Re-verification", border_style="green" if ok.matches else "red"))
+
+        bad = verify_record(reg, rid, result.run_dir, cfg, tamper=True)
+        console.print(Panel(
+            f"on-chain    {_short(bad.onchain_hash)}\n"
+            f"recomputed  {_short(bad.recomputed_hash)}\n\n"
+            + ("[bold red]MISMATCH  evidence has been altered"
+               if not bad.matches else "[bold red]TAMPER NOT DETECTED - BUG"),
+            title="Tamper demonstration", border_style="red"))
     except NoFaceDetectedError as exc:
         _fail(exc, EXIT_NO_FACE)
     except SearchProviderError as exc:
