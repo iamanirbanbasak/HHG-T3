@@ -468,6 +468,22 @@ def capture(
                         title="Captured", border_style="green"))
 
 
+@app.command()
+def serve(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+):
+    """Serve the local terminal-themed web UI.
+
+    An extra on top of the CLI, not a replacement: it drives the same pipeline functions, so the
+    two cannot drift. Binds to localhost only -- it holds API keys in process and drives a camera.
+    """
+    from .web import serve as _serve
+
+    console.print(Panel(f"http://{host}:{port}", title="facechain web", border_style="green"))
+    _serve(host, port)
+
+
 def main() -> None:  # pragma: no cover
     """Entry point.
 

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e0c'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%233dff9a' font-family='monospace'%3E%E2%97%89%3C/text%3E%3C/svg%3E">
+<title>facechain</title>
+<style>
+  :root{
+    --bg:#0a0e0c; --panel:#0d1411; --line:#1b2b22;
+    --fg:#c8f5d8; --dim:#4e7a63; --green:#3dff9a; --amber:#ffcf5c;
+    --red:#ff5f6b; --cyan:#5ce0ff;
+    --mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:13px/1.55 var(--mono);
+    -webkit-font-smoothing:antialiased;
+  }
+  /* faint scanline wash, kept subtle enough to stay readable */
+  body::after{
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:9;
+    background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.18) 3px 4px);
+    mix-blend-mode:multiply; opacity:.5;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:22px 18px 40px}
+
+  header{display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:14px}
+  h1{margin:0; font-size:15px; letter-spacing:.14em; color:var(--green); text-transform:uppercase}
+  h1 .b{color:var(--dim)}
+  .tag{color:var(--dim); font-size:11.5px}
+
+  .bar{
+    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+    border:1px solid var(--line); background:var(--panel);
+    padding:10px; border-radius:4px; margin-bottom:14px;
+  }
+  label{color:var(--dim); font-size:11.5px; letter-spacing:.06em}
+  select,input[type=text],input[type=number]{
+    background:#060a08; color:var(--fg); border:1px solid var(--line);
+    font:12px var(--mono); padding:5px 7px; border-radius:3px;
+  }
+  input[type=text]{min-width:210px}
+  button{
+    font:12px var(--mono); letter-spacing:.08em; text-transform:uppercase;
+    background:transparent; color:var(--green); border:1px solid var(--green);
+    padding:6px 14px; border-radius:3px; cursor:pointer;
+  }
+  button:hover:not(:disabled){background:var(--green); color:#04120b}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.ghost{color:var(--dim); border-color:var(--line)}
+  button.ghost:hover:not(:disabled){background:var(--line); color:var(--fg)}
+  .spacer{flex:1}
+  .chip{font-size:11px; color:var(--dim); border:1px solid var(--line); padding:3px 7px; border-radius:99px}
+  .chip.on{color:var(--green); border-color:#1e5c3f}
+  .chip.off{color:var(--red); border-color:#4a2126}
+
+  .term{
+    border:1px solid var(--line); background:var(--panel); border-radius:4px;
+    min-height:340px; max-height:56vh; overflow:auto; padding:12px 14px;
+  }
+  .term .l{white-space:pre-wrap; word-break:break-word}
+  .k-step{color:var(--cyan)}
+  .k-ok{color:var(--green)}
+  .k-warn{color:var(--amber)}
+  .k-err{color:var(--red)}
+  .k-dim{color:var(--dim)}
+  .k-hash{color:var(--amber); letter-spacing:.02em}
+  .prompt{color:var(--dim)}
+  .cursor{display:inline-block; width:7px; height:14px; background:var(--green);
+          vertical-align:-2px; animation:blink 1.05s steps(2,start) infinite}
+  @keyframes blink{to{visibility:hidden}}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-top:14px}
+  .card{border:1px solid var(--line); background:var(--panel); border-radius:4px; padding:11px 13px}
+  .card h3{margin:0 0 7px; font-size:10.5px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase; font-weight:400}
+  .card .v{font-size:15px; color:var(--green); word-break:break-all}
+  .card .v.small{font-size:11.5px; color:var(--fg)}
+  .verdict{font-size:13px; letter-spacing:.1em}
+  .verdict.good{color:var(--green)}
+  .verdict.bad{color:var(--red)}
+
+  table{width:100%; border-collapse:collapse; margin-top:14px; font-size:12px}
+  th,td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--line)}
+  th{color:var(--dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase}
+  td.num{text-align:right; font-variant-numeric:tabular-nums}
+  tr.pass td{color:var(--green)}
+  tr.rej td{color:var(--dim)}
+  a{color:var(--cyan)}
+  footer{margin-top:20px; color:var(--dim); font-size:11px; line-height:1.7; border-top:1px solid var(--line); padding-top:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>face<span class="b">·</span>chain</h1>
+    <span class="tag">face scan &rarr; social match &rarr; tamper-evident on-chain evidence</span>
+  </header>
+
+  <div class="bar">
+    <label>input</label>
+    <select id="src">
+      <option value="capture">camera</option>
+      <option value="file">file</option>
+    </select>
+    <input type="text" id="path" placeholder="me.jpg" style="display:none">
+
+    <label>provider</label>
+    <select id="provider">
+      <option value="google_lens">google_lens</option>
+      <option value="facecheck">facecheck</option>
+    </select>
+
+    <label>network</label>
+    <select id="network"><option value="local">local</option><option value="base-sepolia">base-sepolia</option></select>
+
+    <label>&tau;</label>
+    <input type="number" id="tau" value="0.45" step="0.01" min="0" max="1" style="width:74px">
+
+    <span class="spacer"></span>
+    <span id="chips"></span>
+    <button id="go">run scan</button>
+    <button id="clr" class="ghost">clear</button>
+  </div>
+
+  <div class="term" id="term"><div class="l k-dim">ready. press RUN SCAN.<span class="cursor"></span></div></div>
+
+  <div id="out"></div>
+
+  <footer>
+    A cosine score is not a probability and not a confidence percentage.
+    A match above threshold is <b>evidence of a probable match, not an identification</b>.
+    The blockchain proves <b>when</b> a claim was recorded and that it has not changed since &mdash;
+    it does not prove the claim is true.
+  </footer>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const term=$("#term"), out=$("#out");
+
+$("#src").onchange=e=>{ $("#path").style.display = e.target.value==="file" ? "" : "none"; };
+
+function line(text,kind){
+  const d=document.createElement("div");
+  d.className="l k-"+(kind||"info");
+  d.textContent=(kind==="step"?"› ":kind==="hash"?"  ":"")+text;
+  term.appendChild(d); term.scrollTop=term.scrollHeight;
+}
+function reset(){ term.innerHTML=""; out.innerHTML=""; }
+
+fetch("/api/config").then(r=>r.json()).then(c=>{
+  $("#provider").value=c.provider; $("#network").value=c.network; $("#tau").value=c.threshold;
+  const chip=(n,ok)=>`<span class="chip ${ok?"on":"off"}">${n}</span>`;
+  $("#chips").innerHTML = chip("serpapi",c.has_serpapi)+" "+chip("imgbb",c.has_imgbb)+" "+chip("facecheck",c.has_facecheck);
+}).catch(()=>{});
+
+$("#clr").onclick=()=>{ reset(); line("ready.","dim"); };
+
+$("#go").onclick=async()=>{
+  reset(); $("#go").disabled=true;
+  const src=$("#src").value;
+  line("$ facechain run "+(src==="capture"?"--capture":"--image "+$("#path").value)
+       +" --provider "+$("#provider").value+" --network "+$("#network").value,"dim");
+  let job;
+  try{
+    const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({capture:src==="capture", image:$("#path").value,
+        provider:$("#provider").value, network:$("#network").value,
+        threshold:parseFloat($("#tau").value)})});
+    job=(await r.json()).job;
+  }catch(e){ line("could not start: "+e,"err"); $("#go").disabled=false; return; }
+
+  let seen=0;
+  const poll=setInterval(async()=>{
+    let s;
+    try{ s=await (await fetch("/api/job/"+job)).json(); }catch(e){ return; }
+    for(let i=seen;i<s.lines.length;i++) line(s.lines[i].text,s.lines[i].kind);
+    seen=s.lines.length;
+    if(s.done){ clearInterval(poll); $("#go").disabled=false; if(s.result) render(s.result); }
+  },500);
+};
+
+function card(h,v,cls){ return `<div class="card"><h3>${h}</h3><div class="v ${cls||""}">${v}</div></div>`; }
+
+function render(r){
+  out.innerHTML =
+    `<div class="grid">
+      ${card("cosine similarity", r.cosine.toFixed(4))}
+      ${card("threshold", r.threshold)}
+      ${card("candidates &rarr; verified", r.candidates+" &rarr; "+r.verified)}
+      ${card("re-verification",
+        `<span class="verdict ${r.verified_match?"good":"bad"}">${r.verified_match?"MATCH":"MISMATCH"}</span>`)}
+      ${card("tamper detection",
+        `<span class="verdict ${r.tamper_detected?"good":"bad"}">${r.tamper_detected?"DETECTED":"NOT DETECTED"}</span>`)}
+      ${card("network", r.network,"small")}
+      ${card("evidence hash", r.evidence_hash,"small")}
+      ${card("record / tx", r.record_id+" · "+r.tx.slice(0,18)+"…","small")}
+     </div>
+     <table><thead><tr><th>post</th><th class="num">cosine</th><th class="num">verdict</th></tr></thead><tbody>
+     ${r.rows.map(x=>`<tr class="${x.pass?"pass":"rej"}">
+        <td><a href="${x.url}" target="_blank" rel="noopener">${x.url}</a></td>
+        <td class="num">${x.cosine.toFixed(4)}</td>
+        <td class="num">${x.pass?"PASS":"reject"}</td></tr>`).join("")}
+     </tbody></table>`;
+}
+</script>
+</body>
+</html>

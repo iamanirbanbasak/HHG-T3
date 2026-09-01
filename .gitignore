@@ -29,3 +29,5 @@ out/
 .DS_Store
 me.jpg
 capture.jpg
+facechain-ui.png
+.playwright-mcp/
