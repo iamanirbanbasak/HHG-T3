@@ -12,12 +12,16 @@ process; it is not meant to be reachable from anywhere else.
 from __future__ import annotations
 
 import json
+import secrets
 import threading
 import traceback
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from .config import Config, load_config
 from .errors import (
@@ -29,6 +33,44 @@ from .errors import (
 )
 
 STATIC = Path(__file__).parent / "static"
+
+# Root that user-supplied image paths are confined to.
+PROJECT_ROOT = Path.cwd().resolve()
+ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".heif"}
+
+# Per-process CSRF token. The page embeds it; API writes require it. A cross-origin script cannot
+# read our HTML (no CORS is enabled), so it cannot obtain the token.
+CSRF_TOKEN = secrets.token_urlsafe(32)
+
+
+def safe_image_path(raw: str) -> Path:
+    """Resolve a user-supplied image path, confined to the project directory.
+
+    Without this, a POST to the local API could name any image on disk -- and since the pipeline
+    UPLOADS the probe to a public image host to run the search, that is file exfiltration rather
+    than mere disclosure. The server is localhost-bound, which is not a defence: any page in the
+    browser, or any local process, can reach it.
+    """
+    if not raw:
+        raise FaceChainError("no input image")
+    candidate = Path(raw).expanduser()
+    resolved = (PROJECT_ROOT / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+
+    try:
+        resolved.relative_to(PROJECT_ROOT)
+    except ValueError:
+        raise FaceChainError(
+            "image must be inside the project directory",
+            {"hint": "copy the file into the project folder and pass a relative path"},
+        ) from None
+
+    if resolved.suffix.lower() not in ALLOWED_SUFFIXES:
+        raise FaceChainError(
+            "unsupported image type", {"suffix": resolved.suffix, "allowed": "jpg png webp bmp heic"}
+        )
+    if not resolved.is_file():
+        raise FaceChainError("image not found", {"path": str(candidate)})
+    return resolved
 
 
 @dataclass
@@ -69,7 +111,7 @@ def _run_job(job: Job, payload: dict) -> None:
 
     try:
         cfg = _cfg(payload)
-        image = Path(payload["image"]) if payload.get("image") else None
+        image = safe_image_path(payload["image"]) if payload.get("image") else None
 
         if payload.get("capture"):
             from .capture import capture_face
@@ -78,7 +120,7 @@ def _run_job(job: Job, payload: dict) -> None:
             image, score, attempts = capture_face(Path("capture.jpg"))
             job.log(f"captured {image.name}  det_score={score:.4f}  ({attempts} attempt)", "ok")
 
-        if image is None or not image.exists():
+        if image is None:
             raise FaceChainError("no input image")
 
         job.log(f"provider={cfg.search_provider}  network={cfg.network}  tau={cfg.threshold}", "dim")
@@ -181,14 +223,23 @@ def _run_job(job: Job, payload: dict) -> None:
 
 
 def create_app():
-    from fastapi import FastAPI
-    from fastapi.responses import FileResponse, JSONResponse
-
     app = FastAPI(title="facechain", docs_url=None, redoc_url=None)
+
+    def _check_origin(request: Request) -> None:
+        """Reject browser requests that did not originate from this page."""
+        origin = request.headers.get("origin")
+        if origin is None:
+            return  # non-browser clients (curl, tests) send no Origin
+        host = request.headers.get("host", "")
+        if origin not in (f"http://{host}", f"https://{host}"):
+            raise HTTPException(status_code=403, detail="cross-origin request rejected")
 
     @app.get("/")
     def index():
-        return FileResponse(STATIC / "index.html")
+        # The CSRF token is injected per response rather than baked into the static file.
+        html = (STATIC / "index.html").read_text()
+        html = html.replace("__CSRF_TOKEN__", CSRF_TOKEN)
+        return HTMLResponse(html)
 
     @app.get("/api/config")
     def config():
@@ -203,7 +254,10 @@ def create_app():
         }
 
     @app.post("/api/run")
-    async def start(payload: dict):
+    async def start(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+        _check_origin(request)
+        if not secrets.compare_digest(x_csrf_token, CSRF_TOKEN):
+            raise HTTPException(status_code=403, detail="missing or invalid CSRF token")
         job = Job(id=uuid.uuid4().hex[:12])
         with _lock:
             _jobs[job.id] = job

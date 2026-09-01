@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e0c'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%233dff9a' font-family='monospace'%3E%E2%97%89%3C/text%3E%3C/svg%3E">
+<meta name="csrf-token" content="__CSRF_TOKEN__">
 <title>facechain</title>
 <style>
   :root{
@@ -153,8 +154,12 @@ function reset(){ term.innerHTML=""; out.innerHTML=""; }
 
 fetch("/api/config").then(r=>r.json()).then(c=>{
   $("#provider").value=c.provider; $("#network").value=c.network; $("#tau").value=c.threshold;
-  const chip=(n,ok)=>`<span class="chip ${ok?"on":"off"}">${n}</span>`;
-  $("#chips").innerHTML = chip("serpapi",c.has_serpapi)+" "+chip("imgbb",c.has_imgbb)+" "+chip("facecheck",c.has_facecheck);
+  const chips=$("#chips"); chips.textContent="";
+  for(const [n,ok] of [["serpapi",c.has_serpapi],["imgbb",c.has_imgbb],["facecheck",c.has_facecheck]]){
+    const s=document.createElement("span");
+    s.className="chip "+(ok?"on":"off"); s.textContent=n;
+    chips.appendChild(s); chips.appendChild(document.createTextNode(" "));
+  }
 }).catch(()=>{});
 
 $("#clr").onclick=()=>{ reset(); line("ready.","dim"); };
@@ -166,7 +171,9 @@ $("#go").onclick=async()=>{
        +" --provider "+$("#provider").value+" --network "+$("#network").value,"dim");
   let job;
   try{
-    const r=await fetch("/api/run",{method:"POST",headers:{"content-type":"application/json"},
+    const csrf=document.querySelector('meta[name=csrf-token]').content;
+    const r=await fetch("/api/run",{method:"POST",
+      headers:{"content-type":"application/json","x-csrf-token":csrf},
       body:JSON.stringify({capture:src==="capture", image:$("#path").value,
         provider:$("#provider").value, network:$("#network").value,
         threshold:parseFloat($("#tau").value)})});
@@ -183,28 +190,73 @@ $("#go").onclick=async()=>{
   },500);
 };
 
-function card(h,v,cls){ return `<div class="card"><h3>${h}</h3><div class="v ${cls||""}">${v}</div></div>`; }
+// Candidate URLs come from the search provider, which reflects arbitrary indexed web pages.
+// That is untrusted input, exactly as it is server-side, so results are built with DOM APIs and
+// text nodes rather than by string-concatenating HTML.
+function safeUrl(u){
+  try{ const p=new URL(String(u)); return (p.protocol==="http:"||p.protocol==="https:")?p.href:null; }
+  catch(e){ return null; }
+}
+function el(tag,cls,text){
+  const n=document.createElement(tag);
+  if(cls) n.className=cls;
+  if(text!==undefined && text!==null) n.textContent=String(text);
+  return n;
+}
+function card(h,v,cls){
+  const c=el("div","card");
+  c.appendChild(el("h3",null,h));
+  const d=el("div","v "+(cls||""));
+  if(v instanceof Node) d.appendChild(v); else d.textContent=String(v);
+  c.appendChild(d);
+  return c;
+}
+function verdict(text,good){ return el("span","verdict "+(good?"good":"bad"),text); }
 
 function render(r){
-  out.innerHTML =
-    `<div class="grid">
-      ${card("cosine similarity", r.cosine.toFixed(4))}
-      ${card("threshold", r.threshold)}
-      ${card("candidates &rarr; verified", r.candidates+" &rarr; "+r.verified)}
-      ${card("re-verification",
-        `<span class="verdict ${r.verified_match?"good":"bad"}">${r.verified_match?"MATCH":"MISMATCH"}</span>`)}
-      ${card("tamper detection",
-        `<span class="verdict ${r.tamper_detected?"good":"bad"}">${r.tamper_detected?"DETECTED":"NOT DETECTED"}</span>`)}
-      ${card("network", r.network,"small")}
-      ${card("evidence hash", r.evidence_hash,"small")}
-      ${card("record / tx", r.record_id+" · "+r.tx.slice(0,18)+"…","small")}
-     </div>
-     <table><thead><tr><th>post</th><th class="num">cosine</th><th class="num">verdict</th></tr></thead><tbody>
-     ${r.rows.map(x=>`<tr class="${x.pass?"pass":"rej"}">
-        <td><a href="${x.url}" target="_blank" rel="noopener">${x.url}</a></td>
-        <td class="num">${x.cosine.toFixed(4)}</td>
-        <td class="num">${x.pass?"PASS":"reject"}</td></tr>`).join("")}
-     </tbody></table>`;
+  out.innerHTML="";
+
+  const grid=el("div","grid");
+  grid.appendChild(card("cosine similarity", r.cosine.toFixed(4)));
+  grid.appendChild(card("threshold", r.threshold));
+  grid.appendChild(card("candidates \u2192 verified", r.candidates+" \u2192 "+r.verified));
+  grid.appendChild(card("re-verification",
+    verdict(r.verified_match?"MATCH":"MISMATCH", r.verified_match)));
+  grid.appendChild(card("tamper detection",
+    verdict(r.tamper_detected?"DETECTED":"NOT DETECTED", r.tamper_detected)));
+  grid.appendChild(card("network", r.network, "small"));
+  grid.appendChild(card("evidence hash", r.evidence_hash, "small"));
+  grid.appendChild(card("record / tx", r.record_id+" \u00b7 "+String(r.tx).slice(0,18)+"\u2026", "small"));
+  out.appendChild(grid);
+
+  const table=el("table");
+  const thead=el("thead"), htr=el("tr");
+  htr.appendChild(el("th",null,"post"));
+  htr.appendChild(el("th","num","cosine"));
+  htr.appendChild(el("th","num","verdict"));
+  thead.appendChild(htr); table.appendChild(thead);
+
+  const tb=el("tbody");
+  for(const x of r.rows){
+    const tr=el("tr", x.pass?"pass":"rej");
+    const td=el("td");
+    const href=safeUrl(x.url);
+    if(href){
+      const a=el("a",null,x.url);           // textContent, never innerHTML
+      a.href=href;                           // validated http/https only
+      a.target="_blank"; a.rel="noopener noreferrer";
+      td.appendChild(a);
+    }else{
+      // non-http(s) scheme: show it as inert text rather than a clickable link
+      td.appendChild(el("span","k-dim",x.url));
+    }
+    tr.appendChild(td);
+    tr.appendChild(el("td","num", x.cosine.toFixed(4)));
+    tr.appendChild(el("td","num", x.pass?"PASS":"reject"));
+    tb.appendChild(tr);
+  }
+  table.appendChild(tb);
+  out.appendChild(table);
 }
 </script>
 </body>

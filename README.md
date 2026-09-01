@@ -254,6 +254,191 @@ verification requires.
 Test fixtures are the sample images bundled with the `insightface` package — no scraped faces and
 no private individuals.
 
+---
+
+# Getting started (handover)
+
+Everything below is what you need to go from a fresh clone to a working run. Read it top to
+bottom the first time; it takes about 15 minutes, most of it waiting on a model download.
+
+## 0. What this actually is, in three sentences
+
+You give it a face. It computes a 512-d embedding, reverse-image-searches the aligned face crop,
+then **independently re-detects and re-embeds every candidate the search returns** and scores each
+one by cosine similarity against the probe. Whatever survives a threshold gets hashed into a
+canonical evidence bundle, anchored on a blockchain, and can later be recomputed from local files
+and compared against the on-chain record.
+
+The second step is the whole point. Without it, the face encoding would be decorative and the
+project would just be an image lookup. Read `pipeline.verify_candidates` first — it is the part a
+reviewer will scrutinise.
+
+## 1. Prerequisites
+
+| Need | Why | Check |
+|---|---|---|
+| Python 3.11 | the pinned runtime | `python3 --version` |
+| `uv` | dependency management | `uv --version`, else `brew install uv` |
+| ~1 GB free disk | face models + solc | — |
+| A webcam | only for `--capture` | optional |
+
+Apple Silicon and Intel macOS both work. Linux should work; nothing is macOS-specific except
+HEIC decoding and the camera backend.
+
+## 2. Install
+
+```bash
+git clone https://github.com/iamanirbanbasak/HHG-T3.git
+cd HHG-T3
+uv venv --python 3.11
+uv pip install -e ".[dev]"
+```
+
+## 3. Keys
+
+```bash
+cp .env.example .env
+```
+
+Then fill in `.env`. **`.env` is git-ignored and must stay that way.**
+
+| Key | Needed for | Where to get it |
+|---|---|---|
+| `SERPAPI_KEY` | reverse image search | serpapi.com/manage-api-key — free tier is 250/month. A real key is **64 hex characters with no prefix**; anything shaped like `live_...` is a different service and will 401. |
+| `IMGBB_KEY` | hosting the crop so Lens can fetch it | api.imgbb.com — free |
+| `FACECHECK_KEY` | optional, real face search | facecheck.id — paid, but `FACECHECK_DEMO=1` costs no credits |
+| `PRIVATE_KEY` | optional, public testnet | a **throwaway** wallet with Base Sepolia faucet ETH only |
+
+You can run everything except the search step with no keys at all.
+
+## 4. First run — no keys, no network
+
+```bash
+uv run pytest -q                    # ~220 tests, fully offline
+```
+
+If that is green, the face models, the Solidity toolchain and the local chain all work on your
+machine. This is the fastest way to know the environment is sound.
+
+**First run downloads ~300 MB of face models** to `~/.insightface` and fetches `solc 0.8.24`.
+Expect several minutes once, then it is cached. Pre-warm before any demo.
+
+## 5. Prove the chain half works, still with no keys
+
+```bash
+uv run facechain selftest \
+  --probe tests/fixtures/faces_multi.jpg \
+  --candidate tests/fixtures/faces_multi.jpg \
+  --post-url "https://example.com/p/1"
+```
+
+You should see cosine `1.0000` → anchored → **MATCH** → **MISMATCH** on the tamper demo.
+Then the negative path:
+
+```bash
+uv run facechain selftest \
+  --probe tests/fixtures/faces_multi.jpg \
+  --candidate tests/fixtures/face_other_person.jpg \
+  --post-url "https://example.com/p/2"
+```
+
+Cosine ≈ `-0.08` → rejected → exit 4, nothing anchored.
+
+`selftest` bypasses **search only**; you supply the candidate. Everything else is real. It exists
+because `--network local` is an in-process chain whose state does not survive between CLI
+invocations, so `run` and `verify` cannot be separate commands against it.
+
+## 6. Full pipeline, with keys
+
+```bash
+uv run facechain run --image me.jpg --network local        # from a file
+uv run facechain run --capture --network local             # from the webcam
+```
+
+macOS will ask for camera permission the first time. If it fails with "not authorized", grant
+Camera to your terminal in **System Settings → Privacy & Security → Camera** and retry.
+
+## 7. Web UI (optional)
+
+```bash
+uv run facechain serve       # http://127.0.0.1:8000
+```
+
+Localhost only, CSRF-protected, and image paths are confined to the project directory. It drives
+the same functions as the CLI rather than reimplementing them.
+
+## 8. Exit codes
+
+Scriptable, and asserted by tests.
+
+| 0 | success (also the expected result of `verify --tamper`) |
+|---|---|
+| 1 | verification mismatch |
+| 2 | no face detected |
+| 3 | search provider error |
+| 4 | no candidate cleared the threshold |
+| 5 | blockchain error |
+
+## 9. Where to look in the code
+
+```
+src/facechain/
+├── pipeline.py        ← START HERE. verify_candidates is the core claim.
+├── evidence.py        ← canonical JSON + hashing. Determinism lives or dies here.
+├── verify.py          ← on-chain read vs independent local recompute
+├── providers.py       ← injection point for the two functions that call outward
+├── config.py          ← the ONLY module that reads os.environ
+├── errors.py          ← seven domain exceptions
+├── face/              ← detect, embed, similarity
+├── search/            ← lens, facecheck, uploader, candidates, fetch
+├── chain/             ← compile, deploy, registry
+└── cli.py             ← presentation only, no business logic
+```
+
+Design rules enforced by tests, not just convention:
+
+- dependency direction is one-way (`test_import_graph.py`)
+- only `config.py` reads the environment
+- no social-media URL literal exists in `src/` (`test_no_hardcoding.py`)
+- provider fakes live in `tests/fakes.py`, never in `src/`, so there is no stub to delete
+
+## 10. Gotchas that cost time
+
+**Do not mock the thing you are testing.** Two real bugs shipped green because of this: `httpx.stream`
+was mocked while the real call used an argument that does not exist there, and `CliRunner` runs
+in-process so it never saw a native-teardown crash that replaced exit code 4 with 134. Prefer
+`MockTransport` and real subprocesses.
+
+**Never regenerate `tests/fixtures/golden_hash.txt` to make a red test pass.** If it changes, find
+out why. It has legitimately changed exactly once, when the evidence schema changed on purpose.
+
+**Google Lens is not a face search engine.** It matches images already in Google's index. A photo
+taken just now has never been indexed, so it will find nothing — that is correct behaviour, not a
+bug. Use an already-public photo, or the `facecheck` provider.
+
+**Never commit face images.** `me.jpg`, `capture.jpg` and `artifacts/` are git-ignored. Captured
+faces are biometric data.
+
+## 11. Current status
+
+| Working | Not done |
+|---|---|
+| face detection, embedding, similarity | public testnet deploy (needs a funded wallet) |
+| evidence hashing + golden tests | threshold calibration (needs a consented labelled set) |
+| contract, anchor, verify, tamper | performance optimisation (measurement only) |
+| Lens search, candidate face verification | screen recording |
+| CLI, camera capture, web UI | |
+
+Verified live: a real Lens query returned 120 candidates, 20 on social domains, and the two
+genuine matches scored 0.8902 and 0.7770 while everything else fell to 0.2534 and below.
+
+**Open question worth resolving before recording:** the pipeline anchors only the single
+highest-scoring candidate. In that live run the top two both cleared threshold, and identity was
+confirmed for the second, not the first. If the top scorer is ever a false positive, the current
+rule anchors the wrong record. Surfacing all above-threshold candidates for a human decision is
+probably the more honest design, given the system produces evidence rather than identification.
+
+
 ## Project layout
 
 ```
