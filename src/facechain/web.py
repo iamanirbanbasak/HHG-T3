@@ -118,7 +118,7 @@ def _cfg(payload: dict) -> Config:
 def _run_job(job: Job, payload: dict) -> None:
     """Drive the same code path as `facechain run`."""
     from .chain.compile import compile_registry
-    from .chain.deploy import deploy, make_web3
+    from .chain.deploy import deploy, make_web3, signing_account
     from .chain.registry import Registry
     from .evidence import RECEIPT_JSON, evidence_hash, similarity_bps
     from .pipeline import run as run_pipeline
@@ -179,9 +179,9 @@ def _run_job(job: Job, payload: dict) -> None:
         w3 = make_web3(cfg)
         abi, _ = compile_registry()
         if cfg.contract_address:
-            reg = Registry(w3, cfg.contract_address, list(abi))
+            reg = Registry(w3, cfg.contract_address, list(abi), account=signing_account(w3, cfg))
         else:
-            reg = Registry(w3, deploy(w3, cfg), list(abi))
+            reg = Registry(w3, deploy(w3, cfg), list(abi), account=signing_account(w3, cfg))
             job.log(f"deployed registry at {reg.address}", "dim")
 
         h = evidence_hash(result.bundle)

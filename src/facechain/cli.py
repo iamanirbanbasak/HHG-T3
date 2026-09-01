@@ -150,7 +150,7 @@ def run(
     Pass --capture to take the photo with the device camera instead of supplying a file.
     """
     from .chain.compile import compile_registry
-    from .chain.deploy import deploy, make_web3
+    from .chain.deploy import deploy, make_web3, signing_account
     from .chain.registry import Registry
     from .evidence import RECEIPT_JSON, evidence_hash, similarity_bps
     from .pipeline import run as run_pipeline
@@ -177,11 +177,11 @@ def run(
         w3 = make_web3(cfg)
         if cfg.contract_address:
             abi, _ = compile_registry()
-            reg = Registry(w3, cfg.contract_address, list(abi))
+            reg = Registry(w3, cfg.contract_address, list(abi), account=signing_account(w3, cfg))
         else:
             addr = deploy(w3, cfg)
             abi, _ = compile_registry()
-            reg = Registry(w3, addr, list(abi))
+            reg = Registry(w3, addr, list(abi), account=signing_account(w3, cfg))
             console.print(f"deployed registry at {addr}")
 
         h = evidence_hash(result.bundle)
@@ -239,7 +239,7 @@ def verify(
 ):
     """Re-verify local evidence against the on-chain record."""
     from .chain.compile import compile_registry
-    from .chain.deploy import make_web3
+    from .chain.deploy import make_web3, signing_account
     from .chain.registry import Registry
     from .verify import verify_record
 
@@ -248,7 +248,7 @@ def verify(
         cfg.require("contract_address")
         w3 = make_web3(cfg)
         abi, _ = compile_registry()
-        reg = Registry(w3, cfg.contract_address, list(abi))
+        reg = Registry(w3, cfg.contract_address, list(abi), account=signing_account(w3, cfg))
         block = w3.eth.block_number
         res = verify_record(reg, record_id, run_dir, cfg, tamper=tamper)
     except ChainError as exc:
@@ -275,7 +275,7 @@ def verify(
 @app.command()
 def deploy(network: str = typer.Option(None, "--network")):
     """Deploy the FaceMatchRegistry contract."""
-    from .chain.deploy import deploy as do_deploy, make_web3
+    from .chain.deploy import deploy as do_deploy, make_web3, signing_account
 
     cfg = _cfg(network)
     try:
@@ -292,7 +292,7 @@ def anchor(
 ):
     """Anchor an existing run's evidence bundle on-chain."""
     from .chain.compile import compile_registry
-    from .chain.deploy import make_web3
+    from .chain.deploy import make_web3, signing_account
     from .chain.registry import Registry
     from .evidence import RECEIPT_JSON, evidence_hash, rebuild_from_artifacts, similarity_bps
 
@@ -303,7 +303,7 @@ def anchor(
         h = evidence_hash(bundle)
         w3 = make_web3(cfg)
         abi, _ = compile_registry()
-        reg = Registry(w3, cfg.contract_address, list(abi))
+        reg = Registry(w3, cfg.contract_address, list(abi), account=signing_account(w3, cfg))
         rid, tx = reg.anchor(h, bundle["match"]["post_url"],
                              similarity_bps(bundle["verification"]["cosine_similarity"]))
         (run_dir / RECEIPT_JSON).write_text(json.dumps({
@@ -340,7 +340,7 @@ def selftest(
     import shutil
 
     from .chain.compile import compile_registry
-    from .chain.deploy import deploy as do_deploy, make_web3
+    from .chain.deploy import deploy as do_deploy, make_web3, signing_account
     from .chain.registry import Registry
     from .evidence import (
         CANDIDATE_IMAGE, POST_TEXT, PROBE_ALIGNED, PROBE_IMAGE,
@@ -406,7 +406,7 @@ def selftest(
         w3 = make_web3(cfg)
         addr = do_deploy(w3, cfg)
         abi, _ = compile_registry()
-        reg = Registry(w3, addr, list(abi))
+        reg = Registry(w3, addr, list(abi), account=signing_account(w3, cfg))
         h = evidence_hash(bundle)
         rid, tx = reg.anchor(h, post_url, similarity_bps(score))
 

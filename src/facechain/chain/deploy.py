@@ -70,8 +70,16 @@ def deploy(w3, cfg: Config) -> str:
     return receipt["contractAddress"]
 
 
+def signing_account(w3, cfg: Config):
+    """The local account used to sign, or None when the node signs for us (eth-tester)."""
+    if cfg.network == "local":
+        return None
+    cfg.require("private_key")
+    return w3.eth.account.from_key(cfg.private_key)
+
+
 def connect(w3, cfg: Config) -> Registry:
     """Attach to an already-deployed registry."""
     cfg.require("contract_address")
     abi, _ = compile_registry()
-    return Registry(w3, cfg.contract_address, list(abi))
+    return Registry(w3, cfg.contract_address, list(abi), account=signing_account(w3, cfg))
