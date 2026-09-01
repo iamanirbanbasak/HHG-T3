@@ -132,11 +132,16 @@ def _print_result(result, cfg) -> None:
 
 @app.command()
 def run(
-    image: Path = typer.Option(..., "--image", "-i", exists=True),
+    image: Path = typer.Option(None, "--image", "-i", help="Input photo (omit with --capture)"),
+    capture_now: bool = typer.Option(False, "--capture", help="Take a photo with the camera first"),
+    camera: int = typer.Option(0, "--camera"),
     network: str = typer.Option(None, "--network"),
     threshold: float = typer.Option(None, "--threshold"),
 ):
-    """Full pipeline: scan -> search -> verify -> anchor on-chain."""
+    """Full pipeline: scan -> search -> verify -> anchor on-chain.
+
+    Pass --capture to take the photo with the device camera instead of supplying a file.
+    """
     from .chain.compile import compile_registry
     from .chain.deploy import deploy, make_web3
     from .chain.registry import Registry
@@ -144,6 +149,20 @@ def run(
     from .pipeline import run as run_pipeline
 
     cfg = _cfg(network, threshold)
+
+    if capture_now:
+        from .capture import capture_face
+
+        console.print("[cyan]capturing from camera...")
+        try:
+            image, score, used = capture_face(Path("capture.jpg"), camera_index=camera)
+        except FaceChainError as exc:
+            _fail(exc, EXIT_NO_FACE)
+        console.print(f"captured {image} (det_score {score:.4f}, {used} attempt(s))")
+    elif image is None:
+        console.print("[red]provide --image PATH or use --capture")
+        raise typer.Exit(2)
+
     try:
         result = run_pipeline(image, cfg)
         _print_result(result, cfg)
@@ -410,13 +429,70 @@ def selftest(
                   f"facechain verify --record-id {rid} --run-dir {run_dir}")
 
 
+@app.command()
+def capture(
+    output: Path = typer.Option(Path("capture.jpg"), "--output", "-o"),
+    camera: int = typer.Option(0, "--camera", help="Capture device index"),
+    countdown: int = typer.Option(3, "--countdown", help="Seconds before the shot"),
+):
+    """Take a photo with the device camera and save it.
+
+    Retries until a face is detected rather than saving a blank frame.
+    """
+    import time as _time
+
+    from .capture import capture_face
+
+    if countdown > 0:
+        for i in range(countdown, 0, -1):
+            console.print(f"[bold cyan]{i}...", end="\r")
+            _time.sleep(1)
+        console.print("[bold green]capturing        ")
+
+    def progress(attempt, n, score):
+        console.print(f"  attempt {attempt}: {n} face(s)"
+                      + (f", det_score {score:.3f}" if n else ""), style="dim")
+
+    try:
+        path, score, used = capture_face(output, camera_index=camera, on_attempt=progress)
+    except FaceChainError as exc:
+        _fail(exc, EXIT_NO_FACE)
+
+    console.print(Panel(f"{path}\ndetection score {score:.4f} (after {used} attempt(s))",
+                        title="Captured", border_style="green"))
+
+
 def main() -> None:  # pragma: no cover
+    """Entry point.
+
+    Exits via os._exit after flushing, deliberately.
+
+    onnxruntime and httpx both own native thread pools, and on macOS their teardown at
+    interpreter shutdown can abort the process (SIGABRT, exit 134) *after* all output has been
+    written and the intended exit code chosen. That silently replaced documented exit codes --
+    `run` returned 134 instead of 4 for a legitimate "no verified match".
+
+    Exit codes are part of this CLI's contract, so the chosen code is committed before native
+    teardown can run. Output is flushed first; nothing is skipped that matters.
+    """
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     if os.environ.get("FACECHAIN_VERBOSE"):
         from .face.models import set_verbose
 
         set_verbose(True)
-    app()
+
+    code = 0
+    try:
+        app()
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    finally:
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+    os._exit(code)
 
 
 if __name__ == "__main__":  # pragma: no cover
