@@ -361,8 +361,9 @@ Camera to your terminal in **System Settings → Privacy & Security → Camera**
 ## 7. Web UI (optional)
 
 ```bash
-uv run facechain serve       # http://127.0.0.1:8000
+uv run facechain serve
 ```
+&rarr; http://127.0.0.1:8000, Ctrl-C to stop.
 
 Three input modes: **upload** (drag-and-drop or file picker), **camera**, or a **path** inside the
 project. Results show *accounts found* — every match above threshold, grouped into distinct
