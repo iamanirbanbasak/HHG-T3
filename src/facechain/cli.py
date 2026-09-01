@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import sys
+import traceback
 from pathlib import Path
 
 import typer
@@ -496,6 +497,9 @@ def main() -> None:  # pragma: no cover
 
     Exit codes are part of this CLI's contract, so the chosen code is committed before native
     teardown can run. Output is flushed first; nothing is skipped that matters.
+
+    Every exception is caught for the same reason: one that escapes would reach normal
+    interpreter shutdown and bypass os._exit entirely, which is precisely the case this guards.
     """
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     if os.environ.get("FACECHAIN_VERBOSE"):
@@ -508,6 +512,14 @@ def main() -> None:  # pragma: no cover
         app()
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+    except KeyboardInterrupt:
+        # Ctrl-C is not a SystemExit. Without this it would escape main() and reach normal
+        # interpreter shutdown -- the exact path that lets native teardown abort the process.
+        console.print("[yellow]interrupted[/yellow]")
+        code = 130
+    except BaseException:  # noqa: BLE001 -- last resort: no exception may skip the hard exit
+        traceback.print_exc()
+        code = 1
     finally:
         try:
             sys.stdout.flush()

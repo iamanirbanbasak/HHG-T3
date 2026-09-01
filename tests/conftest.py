@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
+
+# Belt and braces for facechain/__init__.py's guard: pytest imports this file before anything
+# else, so onnxruntime telemetry stays off even if a plugin or a future conftest import pulls
+# onnxruntime in before the facechain package. See tests/test_telemetry.py.
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
 
 from facechain.config import Config
 from facechain.evidence import (

@@ -84,10 +84,12 @@ def _reads_environment(path: Path) -> bool:
 
 def test_only_config_reads_the_environment():
     # cli.py is permitted: it loads .env into the environment at the boundary before load_config.
+    # __init__.py is permitted: it sets ORT_DISABLE_TELEMETRY, which must be in the environment
+    # before onnxruntime is imported. That is a third-party kill switch, not project configuration.
     offenders = [
         f.relative_to(SRC).as_posix()
         for f in SRC.rglob("*.py")
-        if _reads_environment(f) and f.name not in ("config.py", "cli.py")
+        if _reads_environment(f) and f.name not in ("config.py", "cli.py", "__init__.py")
     ]
     assert offenders == [], f"environment access outside config.py: {offenders}"
 
