@@ -70,6 +70,57 @@ facechain deploy --network base-sepolia
 | 4 | no candidate cleared the threshold |
 | 5 | blockchain error |
 
+## Manual testing
+
+### 1. Run the suite (no keys, no network needed)
+
+```bash
+uv run pytest -q --cov=src/facechain      # 184 tests, 80% coverage
+```
+
+### 2. Real face detection
+
+```bash
+facechain scan --image tests/fixtures/faces_multi.jpg   # 6 faces, det_score 0.92
+facechain scan --image tests/fixtures/face_none.jpg     # NoFaceDetectedError, exit 2
+```
+
+### 3. Full evidence -> anchor -> verify -> tamper cycle
+
+`--network local` is an **in-process** chain: its state does not survive between CLI
+invocations, so `run` and `verify` cannot be separate commands against it. `selftest` performs
+the whole cycle in one process:
+
+```bash
+# positive: same face -> cosine 1.0000 -> anchored -> MATCH -> tamper MISMATCH
+facechain selftest \
+  --probe tests/fixtures/faces_multi.jpg \
+  --candidate tests/fixtures/faces_multi.jpg \
+  --post-url "https://example.com/post/1"
+
+# negative: different person -> cosine -0.0815 -> REJECT, nothing anchored, exit 4
+facechain selftest \
+  --probe tests/fixtures/faces_multi.jpg \
+  --candidate tests/fixtures/face_other_person.jpg \
+  --post-url "https://example.com/post/2"
+```
+
+**`selftest` bypasses search only** — you supply the candidate instead of it being discovered.
+Detection, embedding, cosine, canonical hashing, the on-chain anchor and the `eth_call` read are
+all real. It exists for manual testing and does not replace `run`, which is the graded pipeline.
+
+Confirm the tamper demo left the originals untouched:
+
+```bash
+shasum -a 256 artifacts/run-*/probe.jpg artifacts/run-*/post_text.txt
+```
+
+### 4. What cannot be tested manually yet
+
+`facechain run` needs a working search key (see Known limitations). Until then the discovery step
+cannot be exercised live; the rest of the pipeline is covered by the commands above and by
+`tests/test_end_to_end.py`.
+
 ## Which blockchain
 
 **Solidity 0.8.24**, compiled with `py-solc-x` — no Foundry, no Hardhat, no Node toolchain.

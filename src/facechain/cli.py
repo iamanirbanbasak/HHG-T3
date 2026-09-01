@@ -271,6 +271,125 @@ def anchor(
                         title="Anchored", border_style="cyan"))
 
 
+@app.command()
+def selftest(
+    probe: Path = typer.Option(..., "--probe", exists=True, help="Probe face image"),
+    candidate: Path = typer.Option(..., "--candidate", exists=True, help="Image to verify against"),
+    post_url: str = typer.Option(
+        ..., "--post-url",
+        help="URL of the post you are attesting to. Required: no URL is baked into this code.",
+    ),
+    threshold: float = typer.Option(None, "--threshold"),
+):
+    """Exercise face verification + evidence + anchor + verify + tamper on a local chain.
+
+    SEARCH IS BYPASSED: you supply the candidate yourself instead of it being discovered. Every
+    other step is real -- real detection, real embedding, real cosine, real canonical hashing, a
+    real on-chain anchor and a real eth_call to read it back.
+
+    This exists because `--network local` is an in-process chain whose state does not survive
+    between CLI invocations, so `run` and `verify` cannot be separate commands against it. It is a
+    testing aid, not the graded pipeline: `run` is the graded pipeline.
+    """
+    import shutil
+
+    from .chain.compile import compile_registry
+    from .chain.deploy import deploy as do_deploy, make_web3
+    from .chain.registry import Registry
+    from .evidence import (
+        CANDIDATE_IMAGE, POST_TEXT, PROBE_ALIGNED, PROBE_IMAGE,
+        build_bundle, evidence_hash, sha256_bytes, similarity_bps, utc_now, write_bundle,
+    )
+    from .face.detect import detect_probe, load_image
+    from .face.embed import embed, embedding_digest
+    from .face.similarity import cosine
+    from .pipeline import new_run_dir, _write_png
+    from .verify import verify_record
+
+    cfg = _cfg("local", threshold)
+    console.print("[yellow]NOTE: search is bypassed in selftest. `run` is the graded pipeline.\n")
+
+    try:
+        # real detection + embedding on both sides
+        p_img = load_image(probe)
+        p_face, p_n = detect_probe(p_img)
+        p_vec = embed(p_face.aligned)
+
+        c_img = load_image(candidate)
+        c_face, _ = detect_probe(c_img)
+        c_vec = embed(c_face.aligned)
+
+        score = cosine(p_vec, c_vec)
+    except FaceChainError as exc:
+        _fail(exc, EXIT_NO_FACE)
+
+    t = Table(title="Face verification (real detection + embedding on both images)")
+    t.add_column("field"); t.add_column("value", justify="right")
+    t.add_row("probe faces", str(p_n))
+    t.add_row("probe det score", f"{p_face.det_score:.4f}")
+    t.add_row("cosine similarity", f"{score:.4f}")
+    t.add_row("threshold", f"{cfg.threshold}")
+    t.add_row("verdict", "[green]PASS" if score >= cfg.threshold else "[red]REJECT")
+    console.print(t)
+
+    if score < cfg.threshold:
+        console.print(Panel(
+            f"cosine {score:.4f} is below threshold {cfg.threshold}.\n"
+            "Nothing anchored. This is the honest negative path, not an error.",
+            title="No verified match", border_style="yellow"))
+        raise typer.Exit(EXIT_NO_MATCH)
+
+    run_dir = new_run_dir(cfg)
+    shutil.copyfile(probe, run_dir / PROBE_IMAGE)
+    _write_png(run_dir / PROBE_ALIGNED, p_face.aligned)
+    shutil.copyfile(candidate, run_dir / CANDIDATE_IMAGE)
+    (run_dir / POST_TEXT).write_text(f"manually supplied candidate\nurl: {post_url}\n")
+
+    bundle = build_bundle(
+        run_dir=run_dir, bbox=p_face.bbox, det_score=p_face.det_score, faces_detected=p_n,
+        embedding_sha256=embedding_digest(p_vec),
+        query_image_sha256=sha256_bytes((run_dir / PROBE_ALIGNED).read_bytes()),
+        n_candidates=1, n_social=1, n_face_verified=1,
+        post_url=post_url, platform="manual", author_handle="manual",
+        image_url="(supplied locally)", cosine=score, threshold=cfg.threshold,
+        queried_at=utc_now(), captured_at=utc_now(), provider="manual/selftest",
+    )
+    write_bundle(run_dir, bundle)
+
+    try:
+        w3 = make_web3(cfg)
+        addr = do_deploy(w3, cfg)
+        abi, _ = compile_registry()
+        reg = Registry(w3, addr, list(abi))
+        h = evidence_hash(bundle)
+        rid, tx = reg.anchor(h, post_url, similarity_bps(score))
+
+        console.print(Panel(
+            f"evidence hash  {_short(h)}\ncontract       {addr}\n"
+            f"tx             {tx}\nrecord id      {rid}\nrun dir        {run_dir}",
+            title="Anchored on local chain", border_style="cyan"))
+
+        ok = verify_record(reg, rid, run_dir, cfg)
+        console.print(Panel(
+            f"on-chain    {_short(ok.onchain_hash)}   (block {w3.eth.block_number} - local)\n"
+            f"recomputed  {_short(ok.recomputed_hash)}\n\n"
+            + ("[bold green]MATCH  record intact" if ok.matches else "[bold red]MISMATCH"),
+            title="Verification", border_style="green" if ok.matches else "red"))
+
+        bad = verify_record(reg, rid, run_dir, cfg, tamper=True)
+        console.print(Panel(
+            f"on-chain    {_short(bad.onchain_hash)}\n"
+            f"recomputed  {_short(bad.recomputed_hash)}\n\n"
+            + ("[bold red]MISMATCH  evidence has been altered"
+               if not bad.matches else "[bold red]TAMPER NOT DETECTED - BUG"),
+            title="Tamper demonstration", border_style="red"))
+    except ChainError as exc:
+        _fail(exc, EXIT_CHAIN)
+
+    console.print(f"\n[dim]originals intact -> verify again: "
+                  f"facechain verify --record-id {rid} --run-dir {run_dir}")
+
+
 def main() -> None:  # pragma: no cover
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     if os.environ.get("FACECHAIN_VERBOSE"):
