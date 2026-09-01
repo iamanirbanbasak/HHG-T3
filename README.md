@@ -133,6 +133,21 @@ The pipeline supports two, selected with `--provider` or `SEARCH_PROVIDER`.
 | Candidate images | fetched by URL, may 403 | inline base64, no fetch |
 | Cost | SerpAPI free tier | paid; `demo` mode is free |
 
+A third provider, `yandex`, scrapes Yandex reverse image search with Scrapling. Yandex indexes
+people-pages far more readily than Google: the same probe that returned 60 garment listings from
+Lens returned Behance, ResearchGate, Xing and YouTube profiles from Yandex.
+
+```bash
+facechain run --image me.jpg --provider yandex --network local
+```
+
+It is **best-effort and will break** when Yandex changes its markup — it is an additional
+provider, never a replacement for an API-backed one. Automated access is contrary to Yandex's
+terms; the task explicitly permits "a scripted search approach". A bot challenge raises
+`SearchProviderError` rather than returning an empty list, so a blocked scrape never looks like a
+genuine "found nothing". Parsing is tested against a captured results page, so a markup change
+fails a test instead of silently returning nothing.
+
 **This distinction matters and is easy to get wrong.** Google Lens is not a face search engine.
 Photograph yourself now and Lens has nothing to match, because that image has never been indexed
 — measured live: 120 candidates, 20 social, 19 face-verified, best cosine 0.2923, all rejected.

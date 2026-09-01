@@ -14,7 +14,7 @@ from typing import Literal
 from .errors import FaceChainError
 
 Network = Literal["local", "base-sepolia"]
-SearchProvider = Literal["google_lens", "facecheck"]
+SearchProvider = Literal["google_lens", "facecheck", "yandex"]
 
 DEFAULT_SOCIAL_DOMAINS: tuple[str, ...] = (
     "instagram.com",
@@ -27,6 +27,34 @@ DEFAULT_SOCIAL_DOMAINS: tuple[str, ...] = (
     "reddit.com",
     "bsky.app",
     "youtube.com",
+)
+
+# Portfolio, professional and creative platforms where people keep public profiles. Kept separate
+# from DEFAULT_SOCIAL_DOMAINS because the task speaks of "social media posts", and the distinction
+# is worth preserving in the evidence rather than blurring. Both sets are searched: a Yandex query
+# for a face returns Behance, ResearchGate and Xing profiles far more often than Instagram, and
+# dropping them threw away most of what that provider is good at finding.
+DEFAULT_PROFILE_DOMAINS: tuple[str, ...] = (
+    "behance.net", "dribbble.com", "researchgate.net", "xing.com", "fiverr.com",
+    "upwork.com", "github.com", "gitlab.com", "medium.com", "substack.com",
+    "about.me", "devfolio.co", "devpost.com", "kaggle.com", "orcid.org",
+    "academia.edu", "stackoverflow.com", "producthunt.com", "wellfound.com",
+    "twitch.tv", "vimeo.com", "flickr.com", "soundcloud.com", "imdb.com",
+    "goodreads.com", "pinterest.com", "thoughtleaders.io",
+)
+
+# Portfolio, professional and creative platforms where people keep public profiles. Kept separate
+# from DEFAULT_SOCIAL_DOMAINS because the task speaks of "social media posts", and the distinction
+# is worth preserving in the evidence rather than blurring. Both sets are searched: a Yandex query
+# for a face returns Behance, ResearchGate and Xing profiles far more often than Instagram, and
+# dropping them threw away most of what that provider is good at finding.
+DEFAULT_PROFILE_DOMAINS: tuple[str, ...] = (
+    "behance.net", "dribbble.com", "researchgate.net", "xing.com", "fiverr.com",
+    "upwork.com", "github.com", "gitlab.com", "medium.com", "substack.com",
+    "about.me", "devfolio.co", "devpost.com", "kaggle.com", "orcid.org",
+    "academia.edu", "stackoverflow.com", "producthunt.com", "wellfound.com",
+    "twitch.tv", "vimeo.com", "flickr.com", "soundcloud.com", "imdb.com",
+    "goodreads.com", "pinterest.com", "thoughtleaders.io",
 )
 
 DEFAULT_RPC_URLS: dict[str, str] = {"base-sepolia": "https://sepolia.base.org"}
@@ -56,6 +84,7 @@ class Config:
     search_provider: SearchProvider = "google_lens"
     threshold: float = 0.45
     social_domains: tuple[str, ...] = DEFAULT_SOCIAL_DOMAINS
+    profile_domains: tuple[str, ...] = DEFAULT_PROFILE_DOMAINS
     max_candidates: int = 20
     fetch_timeout_s: float = 10.0
     max_image_bytes: int = 8 * 1024 * 1024

@@ -57,5 +57,9 @@ def default_providers(cfg: Config | None = None) -> Providers:
         from .search.facecheck import search as facecheck_search
 
         provider = facecheck_search
+    elif cfg is not None and cfg.search_provider == "yandex":
+        from .search.yandex import search as yandex_search
+
+        provider = yandex_search
 
     return Providers(face_search=provider, image_upload=upload, fetch_image=fetch_image)

@@ -34,14 +34,19 @@ def registrable_host(url: str) -> str:
 
 
 def is_social(url: str, cfg: Config) -> bool:
-    """Match on the registrable domain, never a substring.
+    """True for a page where a person plausibly has a public presence.
 
-    A substring check would admit `notinstagram.com.evil.co`.
+    Covers both the strict social set and the professional/portfolio set: a face search returns
+    Behance, ResearchGate and Xing profiles far more often than Instagram posts, and excluding
+    them discarded most of what the Yandex provider finds.
+
+    Matches on the registrable domain, never a substring -- a substring check would admit
+    `notinstagram.com.evil.co`.
     """
     host = registrable_host(url)
     if not host:
         return False
-    for domain in cfg.social_domains:
+    for domain in tuple(cfg.social_domains) + tuple(cfg.profile_domains):
         if host == domain or host.endswith("." + domain):
             return True
     try:

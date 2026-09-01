@@ -143,6 +143,17 @@ class TestUnionAndFilter:
         kept = [c.page_url for c in filter_social(cands, cfg)]
         assert kept == ["https://www.instagram.com/p/AAA/", "https://x.com/user/status/1"]
 
+    def test_filter_keeps_profile_platforms(self, cfg):
+        """Face search surfaces portfolio and professional profiles more than social posts."""
+        cands = [
+            candidate("https://www.behance.net/someone"),
+            candidate("https://www.researchgate.net/profile/Someone"),
+            candidate("https://www.xing.com/profile/Someone"),
+            candidate("https://random-blog.example.com/post"),
+        ]
+        kept = [c.page_url for c in filter_social(cands, cfg)]
+        assert len(kept) == 3 and "random-blog" not in " ".join(kept)
+
     def test_substring_domain_attack_rejected(self, cfg):
         cands = [candidate("https://notinstagram.com.evil.co/p/AAA/")]
         assert filter_social(cands, cfg) == []
