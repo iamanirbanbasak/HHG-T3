@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from .config import Config, load_config
@@ -41,6 +41,21 @@ ALLOWED_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".heic", ".heif"}
 # Per-process CSRF token. The page embeds it; API writes require it. A cross-origin script cannot
 # read our HTML (no CORS is enabled), so it cannot obtain the token.
 CSRF_TOKEN = secrets.token_urlsafe(32)
+
+UPLOAD_DIR = PROJECT_ROOT / "uploads"
+MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+# Magic bytes, checked against actual content rather than the declared type or the filename.
+IMAGE_MAGIC = (
+    b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n", b"GIF8", b"RIFF", b"BM",
+    b"II*\x00", b"MM\x00*",
+)
+
+
+def _looks_like_image(head: bytes) -> bool:
+    if any(head.startswith(m) for m in IMAGE_MAGIC):
+        return True
+    # HEIC/HEIF carry an ftyp box a few bytes in
+    return len(head) > 12 and head[4:8] == b"ftyp"
 
 
 def safe_image_path(raw: str) -> Path:
@@ -147,8 +162,18 @@ def _run_job(job: Job, payload: dict) -> None:
                 "ok" if r["pass"] else "dim",
             )
 
-        job.log(f"selected match: {result.top.candidate.page_url}", "ok")
-        job.log(f"cosine similarity {result.top.cosine:.4f} (a cosine score, not a percentage)", "ok")
+        from .profiles import group_accounts
+
+        survivors = [(s.candidate.page_url, s.cosine)
+                     for s in result.scored if s.cosine >= cfg.threshold]
+        accounts = group_accounts(survivors)
+
+        job.log(f"{len(survivors)} match(es) above threshold, "
+                f"across {len(accounts)} account(s)", "ok")
+        for a in accounts:
+            job.log(f"  {a.display}  best cosine {a.best_cosine:.4f}", "ok")
+            for u in a.urls:
+                job.log(f"      {u}", "dim")
 
         job.log("anchoring evidence on-chain...", "step")
         w3 = make_web3(cfg)
@@ -190,6 +215,14 @@ def _run_job(job: Job, payload: dict) -> None:
             "social": result.n_social,
             "verified": result.n_verified,
             "rows": rows,
+            "accounts": [
+                {
+                    "display": a.display, "platform": a.platform, "handle": a.handle,
+                    "profile_url": a.profile_url, "urls": a.urls,
+                    "cosine": round(a.best_cosine, 4),
+                }
+                for a in accounts
+            ],
             "evidence_hash": "0x" + h.hex(),
             "record_id": rid,
             "tx": tx,
@@ -252,6 +285,42 @@ def create_app():
             "has_imgbb": bool(cfg.imgbb_key),
             "has_facecheck": bool(cfg.facecheck_key),
         }
+
+    @app.post("/api/upload")
+    async def upload(
+        request: Request,
+        file: UploadFile = File(...),
+        x_csrf_token: str = Header(default=""),
+    ):
+        """Accept an uploaded image and return a project-relative path.
+
+        The client never chooses where the file lands. The stored name is generated, the
+        extension comes from a fixed allowlist, and the content is checked against magic bytes --
+        a supplied filename is treated as a label, never as a path.
+        """
+        _check_origin(request)
+        if not secrets.compare_digest(x_csrf_token, CSRF_TOKEN):
+            raise HTTPException(status_code=403, detail="missing or invalid CSRF token")
+
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in ALLOWED_SUFFIXES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unsupported image type {suffix or '(none)'}",
+            )
+
+        data = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="image exceeds 12 MB")
+        if not data:
+            raise HTTPException(status_code=400, detail="empty upload")
+        if not _looks_like_image(data[:16]):
+            raise HTTPException(status_code=400, detail="content is not a recognisable image")
+
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        dest = UPLOAD_DIR / f"{uuid.uuid4().hex[:16]}{suffix}"
+        dest.write_bytes(data)
+        return {"path": str(dest.relative_to(PROJECT_ROOT)), "bytes": len(data)}
 
     @app.post("/api/run")
     async def start(request: Request, payload: dict, x_csrf_token: str = Header(default="")):

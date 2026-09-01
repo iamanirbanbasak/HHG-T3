@@ -15,15 +15,32 @@ import pytest
 SRC = Path(__file__).resolve().parents[1] / "src" / "facechain"
 PY_FILES = sorted(SRC.rglob("*.py"))
 SOCIAL = re.compile(
-    r"https?://(www\.)?(instagram|twitter|x|facebook|tiktok|linkedin|threads|reddit|bsky)\.com/\S",
+    r"https?://(?:www\.)?(?:instagram|twitter|x|facebook|tiktok|linkedin|threads|reddit|bsky)"
+    r"\.(?:com|app|net)/(?P<path>[^\s\"')]*)",
     re.I,
 )
 
 
 def test_no_social_post_url_literal_in_src():
-    """A pre-picked result would show up as a concrete post URL in shipped code."""
-    hits = [(f.name, m.group(0)) for f in PY_FILES for m in SOCIAL.finditer(f.read_text())]
+    """A pre-picked result would appear as a CONCRETE social URL in shipped code.
+
+    Format templates such as `https://www.instagram.com/{h}/` are not results: they contain a
+    placeholder and no account, so they cannot encode a pre-picked match. Only URLs naming a real
+    path are flagged.
+    """
+    hits = []
+    for f in PY_FILES:
+        for m in SOCIAL.finditer(f.read_text()):
+            if "{" in m.group(0) or not m.group("path").strip("/"):
+                continue  # a template, or a bare domain
+            hits.append((f.name, m.group(0)[:60]))
     assert hits == [], f"hardcoded social URL in production code: {hits}"
+
+
+def test_the_hardcoding_check_can_actually_fail():
+    """A guard that cannot fire is not a guard."""
+    m = SOCIAL.search('URL = "https://www.instagram.com/p/C9gkjieTRAb/"')
+    assert m and "{" not in m.group(0) and m.group("path").strip("/")
 
 
 def test_no_fake_or_stub_providers_in_src():

@@ -364,6 +364,16 @@ Camera to your terminal in **System Settings → Privacy & Security → Camera**
 uv run facechain serve       # http://127.0.0.1:8000
 ```
 
+Three input modes: **upload** (drag-and-drop or file picker), **camera**, or a **path** inside the
+project. Results show *accounts found* — every match above threshold, grouped into distinct
+social accounts — above the full scored candidate list.
+
+Accounts are derived conservatively. Where a URL carries a handle (`x.com/jane/status/1`,
+`linkedin.com/in/jane-doe`) posts collapse into one account with a profile link. Where it does not
+— Instagram permalinks like `/p/ABC123/` contain no handle — the post is listed under its platform
+with the handle left unknown rather than guessed. Fabricating a handle would attach an invented
+identity to a real cosine score.
+
 Localhost only, CSRF-protected, and image paths are confined to the project directory. It drives
 the same functions as the CLI rather than reimplementing them.
 

@@ -83,6 +83,34 @@
   .verdict.good{color:var(--green)}
   .verdict.bad{color:var(--red)}
 
+  .drop{
+    border:1px dashed var(--line); background:var(--panel); border-radius:4px;
+    padding:26px 16px; text-align:center; margin-bottom:14px; cursor:pointer;
+    transition:border-color .15s, background .15s;
+  }
+  .drop:hover,.drop.over{border-color:var(--green); background:#0f1a15}
+  .drop.has{border-style:solid; border-color:#1e5c3f}
+  .dz-main{color:var(--fg); font-size:12.5px}
+  .dz-sub{color:var(--dim); font-size:11px; margin-top:6px}
+  button.link{
+    background:none; border:none; color:var(--green); text-decoration:underline;
+    padding:0; font:inherit; text-transform:none; letter-spacing:0; cursor:pointer;
+  }
+  button.link:hover{background:none; color:var(--green)}
+
+  .accounts{margin-top:14px}
+  .acct{
+    display:flex; align-items:flex-start; gap:12px; padding:10px 12px;
+    border:1px solid var(--line); border-left:2px solid var(--green);
+    background:var(--panel); border-radius:4px; margin-bottom:8px;
+  }
+  .acct .who{flex:1; min-width:0}
+  .acct .name{color:var(--green); font-size:13px}
+  .acct .links{margin-top:5px; display:flex; flex-direction:column; gap:2px}
+  .acct .links a{font-size:11.5px; word-break:break-all}
+  .acct .sc{color:var(--amber); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .sec{margin:18px 0 8px; color:var(--dim); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase}
+
   table{width:100%; border-collapse:collapse; margin-top:14px; font-size:12px}
   th,td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--line)}
   th{color:var(--dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase}
@@ -103,8 +131,9 @@
   <div class="bar">
     <label>input</label>
     <select id="src">
+      <option value="upload">upload</option>
       <option value="capture">camera</option>
-      <option value="file">file</option>
+      <option value="file">path</option>
     </select>
     <input type="text" id="path" placeholder="me.jpg" style="display:none">
 
@@ -126,6 +155,12 @@
     <button id="clr" class="ghost">clear</button>
   </div>
 
+  <div id="drop" class="drop">
+    <input type="file" id="file" accept="image/*" hidden>
+    <div class="dz-main">drop a photo here, or <button type="button" id="pick" class="link">choose a file</button></div>
+    <div class="dz-sub" id="dzinfo">jpg · png · webp · heic · max 12 MB</div>
+  </div>
+
   <div class="term" id="term"><div class="l k-dim">ready. press RUN SCAN.<span class="cursor"></span></div></div>
 
   <div id="out"></div>
@@ -142,7 +177,38 @@
 const $=s=>document.querySelector(s);
 const term=$("#term"), out=$("#out");
 
-$("#src").onchange=e=>{ $("#path").style.display = e.target.value==="file" ? "" : "none"; };
+let uploaded=null;
+
+function syncInput(){
+  const v=$("#src").value;
+  $("#path").style.display = v==="file" ? "" : "none";
+  $("#drop").style.display = v==="upload" ? "" : "none";
+}
+$("#src").onchange=syncInput; syncInput();
+
+const drop=$("#drop"), fileInput=$("#file");
+$("#pick").onclick=e=>{ e.stopPropagation(); fileInput.click(); };
+drop.onclick=()=>fileInput.click();
+drop.ondragover=e=>{ e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave=()=>drop.classList.remove("over");
+drop.ondrop=e=>{ e.preventDefault(); drop.classList.remove("over");
+  if(e.dataTransfer.files[0]) sendFile(e.dataTransfer.files[0]); };
+fileInput.onchange=()=>{ if(fileInput.files[0]) sendFile(fileInput.files[0]); };
+
+async function sendFile(f){
+  $("#dzinfo").textContent="uploading "+f.name+" …";
+  const fd=new FormData(); fd.append("file",f,f.name);
+  try{
+    const r=await fetch("/api/upload",{method:"POST",headers:{"x-csrf-token":csrfToken()},body:fd});
+    const j=await r.json();
+    if(!r.ok){ $("#dzinfo").textContent="rejected: "+(j.detail||r.status); drop.classList.remove("has"); return; }
+    uploaded=j.path;
+    drop.classList.add("has");
+    $("#dzinfo").textContent=f.name+"  ·  "+(j.bytes/1024).toFixed(0)+" KB  ·  ready";
+  }catch(err){ $("#dzinfo").textContent="upload failed: "+err; }
+}
+
+function csrfToken(){ return document.querySelector('meta[name=csrf-token]').content; }
 
 function line(text,kind){
   const d=document.createElement("div");
@@ -167,14 +233,15 @@ $("#clr").onclick=()=>{ reset(); line("ready.","dim"); };
 $("#go").onclick=async()=>{
   reset(); $("#go").disabled=true;
   const src=$("#src").value;
-  line("$ facechain run "+(src==="capture"?"--capture":"--image "+$("#path").value)
+  const imgPath = src==="upload" ? uploaded : $("#path").value;
+  if(src==="upload" && !uploaded){ line("upload a photo first.","warn"); $("#go").disabled=false; return; }
+  line("$ facechain run "+(src==="capture"?"--capture":"--image "+imgPath)
        +" --provider "+$("#provider").value+" --network "+$("#network").value,"dim");
   let job;
   try{
-    const csrf=document.querySelector('meta[name=csrf-token]').content;
     const r=await fetch("/api/run",{method:"POST",
-      headers:{"content-type":"application/json","x-csrf-token":csrf},
-      body:JSON.stringify({capture:src==="capture", image:$("#path").value,
+      headers:{"content-type":"application/json","x-csrf-token":csrfToken()},
+      body:JSON.stringify({capture:src==="capture", image:imgPath,
         provider:$("#provider").value, network:$("#network").value,
         threshold:parseFloat($("#tau").value)})});
     job=(await r.json()).job;
@@ -229,6 +296,29 @@ function render(r){
   grid.appendChild(card("record / tx", r.record_id+" \u00b7 "+String(r.tx).slice(0,18)+"\u2026", "small"));
   out.appendChild(grid);
 
+  if(r.accounts && r.accounts.length){
+    out.appendChild(el("div","sec","accounts found ("+r.accounts.length+")"));
+    const wrap=el("div","accounts");
+    for(const a of r.accounts){
+      const row=el("div","acct");
+      const who=el("div","who");
+      who.appendChild(el("div","name",a.display));
+      const links=el("div","links");
+      const seen=new Set();
+      const add=u=>{ const h=safeUrl(u); if(!h||seen.has(h)) return; seen.add(h);
+        const link=el("a",null,u); link.href=h; link.target="_blank";
+        link.rel="noopener noreferrer"; links.appendChild(link); };
+      if(a.profile_url) add(a.profile_url);
+      for(const u of a.urls) add(u);
+      who.appendChild(links);
+      row.appendChild(who);
+      row.appendChild(el("div","sc",a.cosine.toFixed(4)));
+      wrap.appendChild(row);
+    }
+    out.appendChild(wrap);
+  }
+
+  out.appendChild(el("div","sec","all candidates scored"));
   const table=el("table");
   const thead=el("thead"), htr=el("tr");
   htr.appendChild(el("th",null,"post"));
