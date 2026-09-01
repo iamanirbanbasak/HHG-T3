@@ -137,7 +137,15 @@ def _materialise(cand: Candidate, dest: Path, cfg: Config, providers: Providers)
         dest.write_bytes(data)
         return dest
 
-    return providers.fetch_image(cand.image_url, dest, cfg)
+    try:
+        return providers.fetch_image(cand.image_url, dest, cfg)
+    except CandidateFetchError:
+        # Social CDNs frequently refuse hotlinked full-size images. Rather than lose the
+        # candidate entirely, retry the lower-resolution thumbnail.
+        if cand.thumbnail_url and cand.thumbnail_url != cand.image_url:
+            log.info("full-size fetch failed, falling back to thumbnail for %s", cand.page_url)
+            return providers.fetch_image(cand.thumbnail_url, dest, cfg)
+        raise
 
 
 def _detect_or_none(img: np.ndarray):

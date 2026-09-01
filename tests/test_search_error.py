@@ -100,3 +100,23 @@ class TestParsing:
 
     def test_tolerates_unexpected_shapes(self):
         assert parse_candidates({"visual_matches": ["not-a-dict", None]}) == []
+
+
+class TestImageResolutionPreference:
+    """Lens thumbnails are ~200px; after face-cropping to 112x112 that loses detail the
+    embedding relies on. The full-size original must be preferred."""
+
+    def test_prefers_original_over_thumbnail(self):
+        got = parse_candidates({"visual_matches": [{
+            "link": "https://instagram.com/p/A/",
+            "original": "https://cdn/full.jpg",
+            "thumbnail": "https://cdn/thumb.jpg",
+        }]})
+        assert got[0].image_url == "https://cdn/full.jpg"
+        assert got[0].thumbnail_url == "https://cdn/thumb.jpg"
+
+    def test_falls_back_to_thumbnail_when_no_original(self):
+        got = parse_candidates({"visual_matches": [{
+            "link": "https://instagram.com/p/A/", "thumbnail": "https://cdn/thumb.jpg",
+        }]})
+        assert got[0].image_url == "https://cdn/thumb.jpg"

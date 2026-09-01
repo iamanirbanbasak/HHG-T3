@@ -146,3 +146,40 @@ class TestUnionAndFilter:
     def test_substring_domain_attack_rejected(self, cfg):
         cands = [candidate("https://notinstagram.com.evil.co/p/AAA/")]
         assert filter_social(cands, cfg) == []
+
+
+class TestThumbnailFallback:
+    def test_falls_back_to_thumbnail_when_the_original_is_refused(self, tmp_path, cfg):
+        """A 403 on the full-size image must not lose the candidate outright."""
+        from facechain.errors import CandidateFetchError
+        from facechain.pipeline import _materialise
+        from facechain.providers import Providers
+        from facechain.search.lens import Candidate
+
+        tried = []
+
+        def fetch(url, dest, cfg):
+            tried.append(url)
+            if url.endswith("full.jpg"):
+                raise CandidateFetchError("refused", {"status": 403})
+            dest.write_bytes(b"\xff\xd8\xffok")
+            return dest
+
+        cand = Candidate("https://x.com/a", "https://cdn/full.jpg", "t", "s",
+                         thumbnail_url="https://cdn/thumb.jpg")
+        out = _materialise(cand, tmp_path / "c.jpg", cfg, Providers(None, None, fetch))
+        assert tried == ["https://cdn/full.jpg", "https://cdn/thumb.jpg"]
+        assert out.read_bytes().startswith(b"\xff\xd8\xff")
+
+    def test_raises_when_there_is_no_thumbnail_to_fall_back_to(self, tmp_path, cfg):
+        from facechain.errors import CandidateFetchError
+        from facechain.pipeline import _materialise
+        from facechain.providers import Providers
+        from facechain.search.lens import Candidate
+
+        def fetch(url, dest, cfg):
+            raise CandidateFetchError("refused", {"status": 403})
+
+        cand = Candidate("https://x.com/a", "https://cdn/full.jpg", "t", "s")
+        with pytest.raises(CandidateFetchError):
+            _materialise(cand, tmp_path / "c.jpg", cfg, Providers(None, None, fetch))

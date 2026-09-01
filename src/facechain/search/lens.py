@@ -30,6 +30,8 @@ class Candidate:
     # Some providers return the matched thumbnail inline rather than as a URL. When present it is
     # used directly, which avoids an outbound fetch and the hotlink 403s that plague social CDNs.
     image_b64: str | None = None
+    # Lower-resolution fallback, used when the full-size original cannot be fetched.
+    thumbnail_url: str = ""
 
 
 def search(image_url: str, cfg: Config) -> list[Candidate]:
@@ -86,7 +88,11 @@ def parse_candidates(body: dict) -> list[Candidate]:
             out.append(
                 Candidate(
                     page_url=page,
-                    image_url=item.get("thumbnail") or item.get("original") or "",
+                    # Prefer the full-resolution source over the thumbnail. Lens thumbnails are
+                    # ~200px, and after face-cropping and upscaling to 112x112 that discards
+                    # detail the embedding depends on. The thumbnail is a fallback, not a choice.
+                    image_url=item.get("original") or item.get("thumbnail") or "",
+                    thumbnail_url=item.get("thumbnail") or "",
                     title=(item.get("title") or "")[:500],
                     source=(item.get("source") or "")[:200],
                 )
