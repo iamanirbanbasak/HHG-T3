@@ -56,13 +56,15 @@ def test_full_run_then_verify_then_tamper(tmp_path, chain, providers_returning_t
     result = run_pipeline(FX / "faces_multi.jpg", cfg, providers=provs)
 
     # the aligned crop AND the full photo were both searched, crop first
-    assert calls["search"] == ["probe_aligned.png", "probe.jpg"]
+    # the masked head crop is the primary query; the full photo widens recall
+    assert calls["search"] == ["probe_head.png", "probe.jpg"]
     # the candidate was genuinely fetched and embedded
     assert len(calls["fetch"]) == 1
     assert result.top.cosine > 0.9
 
     # every source artifact exists
-    for name in ("probe.jpg", "probe_aligned.png", "candidate.jpg", POST_TEXT, "evidence.json"):
+    for name in ("probe.jpg", "probe_aligned.png", "probe_head.png", "candidate.jpg",
+                 POST_TEXT, "evidence.json"):
         assert (result.run_dir / name).exists(), name
 
     # 6: anchor

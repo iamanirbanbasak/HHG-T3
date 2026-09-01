@@ -42,6 +42,7 @@ MODELS = {
 # Artifact filenames, frozen by 02-architecture-execution.md section 9.
 PROBE_IMAGE = "probe.jpg"
 PROBE_ALIGNED = "probe_aligned.png"
+PROBE_HEAD = "probe_head.png"
 CANDIDATE_IMAGE = "candidate.jpg"
 POST_TEXT = "post_text.txt"
 EVIDENCE_JSON = "evidence.json"

@@ -26,6 +26,7 @@ from .evidence import (
     CANDIDATE_IMAGE,
     POST_TEXT,
     PROBE_ALIGNED,
+    PROBE_HEAD,
     PROBE_IMAGE,
     build_bundle,
     sha256_bytes,
@@ -182,9 +183,22 @@ def run(
     shutil.copyfile(image, run_dir / PROBE_IMAGE)
     _write_png(run_dir / PROBE_ALIGNED, probe.aligned)
 
+    # The search query is a large head crop with background and clothing masked out. Sending the
+    # 112x112 ArcFace crop instead gave reverse-image search almost nothing to work with, and
+    # sending the full photo let it match the subject's clothing rather than their face -- one
+    # real run returned 60 results that were almost entirely garment listings.
+    from .face.headcrop import head_crop
+
+    try:
+        _write_png(run_dir / PROBE_HEAD, head_crop(img, probe.bbox))
+        query_image = run_dir / PROBE_HEAD
+    except Exception as exc:  # noqa: BLE001 - never lose a run over a crop failure
+        log.warning("head crop failed, falling back to the aligned crop: %s", exc)
+        query_image = run_dir / PROBE_ALIGNED
+
     # 3. search: the ALIGNED CROP is the primary query; the full photo widens recall only.
     # The provider decides how the image reaches the service (public host vs direct upload).
-    crop_hits = providers.face_search(run_dir / PROBE_ALIGNED, cfg)
+    crop_hits = providers.face_search(query_image, cfg)
     photo_hits = providers.face_search(run_dir / PROBE_IMAGE, cfg)
 
     all_cands = union(crop_hits, photo_hits)
@@ -218,7 +232,7 @@ def run(
         det_score=probe.det_score,
         faces_detected=faces_detected,
         embedding_sha256=embedding_digest(probe_vec),
-        query_image_sha256=sha256_bytes((run_dir / PROBE_ALIGNED).read_bytes()),
+        query_image_sha256=sha256_bytes(query_image.read_bytes()),
         n_candidates=len(all_cands),
         n_social=len(social),
         n_face_verified=len(survivors),
