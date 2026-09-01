@@ -84,21 +84,22 @@ def verify_candidates(
     workdir.mkdir(parents=True, exist_ok=True)
 
     for i, cand in enumerate(candidates):
-        if not cand.image_url:
+        if not cand.image_url and not cand.image_b64:
             continue
         try:
-            if cand.image_url in seen_images:
-                score = seen_images[cand.image_url]
+            key = cand.page_url if cand.image_b64 else cand.image_url
+            if key in seen_images:
+                score = seen_images[key]
                 path = workdir / f"c{i:03d}.jpg"
             else:
-                path = providers.fetch_image(cand.image_url, workdir / f"c{i:03d}.jpg", cfg)
+                path = _materialise(cand, workdir / f"c{i:03d}.jpg", cfg, providers)
                 img = load_image(path)
                 faces = _detect_or_none(img)
                 if faces is None:
                     log.info("candidate %s has no detectable face, skipping", cand.page_url)
                     continue
                 score = cosine(probe_vec, embed(faces.aligned))
-                seen_images[cand.image_url] = score
+                seen_images[key] = score
         except CandidateFetchError as exc:
             # One candidate failing is not a failed run.
             log.warning("skipping candidate: %s", exc)
@@ -111,6 +112,32 @@ def verify_candidates(
 
     scored.sort(key=lambda s: s.cosine, reverse=True)
     return scored
+
+
+def _materialise(cand: Candidate, dest: Path, cfg: Config, providers: Providers) -> Path:
+    """Get the candidate's image onto disk.
+
+    Providers that return an inline thumbnail need no outbound request at all, which sidesteps
+    the hotlink 403s that social CDNs routinely serve.
+    """
+    if cand.image_b64:
+        import base64
+        import binascii
+
+        raw = cand.image_b64
+        if "," in raw[:64]:  # strip a data: URI prefix if present
+            raw = raw.split(",", 1)[1]
+        try:
+            data = base64.b64decode(raw, validate=False)
+        except (binascii.Error, ValueError) as exc:
+            raise CandidateFetchError("inline thumbnail is not valid base64") from exc
+        if not data:
+            raise CandidateFetchError("inline thumbnail is empty")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return dest
+
+    return providers.fetch_image(cand.image_url, dest, cfg)
 
 
 def _detect_or_none(img: np.ndarray):
@@ -135,7 +162,7 @@ def run(
     fabricates a match, never lowers the threshold, and never falls back to a best-available
     candidate below tau.
     """
-    providers = providers or default_providers()
+    providers = providers or default_providers(cfg)
     run_dir = new_run_dir(cfg)
     queried_at = utc_now()
 
@@ -147,11 +174,10 @@ def run(
     shutil.copyfile(image, run_dir / PROBE_IMAGE)
     _write_png(run_dir / PROBE_ALIGNED, probe.aligned)
 
-    # 3. search: the ALIGNED CROP is the primary query; the full photo widens recall only
-    crop_url = providers.image_upload(run_dir / PROBE_ALIGNED, cfg)
-    photo_url = providers.image_upload(run_dir / PROBE_IMAGE, cfg)
-    crop_hits = providers.lens_search(crop_url, cfg)
-    photo_hits = providers.lens_search(photo_url, cfg)
+    # 3. search: the ALIGNED CROP is the primary query; the full photo widens recall only.
+    # The provider decides how the image reaches the service (public host vs direct upload).
+    crop_hits = providers.face_search(run_dir / PROBE_ALIGNED, cfg)
+    photo_hits = providers.face_search(run_dir / PROBE_IMAGE, cfg)
 
     all_cands = union(crop_hits, photo_hits)
     social = filter_social(all_cands, cfg)

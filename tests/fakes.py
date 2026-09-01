@@ -21,8 +21,8 @@ def make_fake_providers(candidates, image_bytes: bytes = b"\xff\xd8\xff\xe0fake-
         calls["upload"].append(Path(path).name)
         return f"https://fake.test/{Path(path).name}"
 
-    def search(image_url: str, cfg: Config):
-        calls["search"].append(image_url)
+    def search(image: Path, cfg: Config):
+        calls["search"].append(Path(image).name)
         return list(candidates)
 
     def fetch(url: str, dest: Path, cfg: Config) -> Path:
@@ -31,17 +31,17 @@ def make_fake_providers(candidates, image_bytes: bytes = b"\xff\xd8\xff\xe0fake-
         dest.write_bytes(image_bytes)
         return dest
 
-    return Providers(lens_search=search, image_upload=upload, fetch_image=fetch), calls
+    return Providers(face_search=search, image_upload=upload, fetch_image=fetch), calls
 
 
 def failing_search(status: int = 500):
-    def search(image_url: str, cfg: Config):
+    def search(image, cfg: Config):
         raise SearchProviderError("lens returned an error status", {"status": status})
 
     return search
 
 
-def empty_search(image_url: str, cfg: Config):
+def empty_search(image, cfg: Config):
     """A SUCCESSFUL call that found nothing. Distinct from a provider failure."""
     return []
 

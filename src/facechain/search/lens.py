@@ -27,6 +27,9 @@ class Candidate:
     image_url: str
     title: str
     source: str
+    # Some providers return the matched thumbnail inline rather than as a URL. When present it is
+    # used directly, which avoids an outbound fetch and the hotlink 403s that plague social CDNs.
+    image_b64: str | None = None
 
 
 def search(image_url: str, cfg: Config) -> list[Candidate]:

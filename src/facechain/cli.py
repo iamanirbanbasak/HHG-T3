@@ -48,9 +48,10 @@ def _load_dotenv() -> None:
         os.environ.setdefault(k.strip(), v.strip())
 
 
-def _cfg(network: str | None = None, threshold: float | None = None):
+def _cfg(network: str | None = None, threshold: float | None = None,
+         provider: str | None = None):
     _load_dotenv()
-    return load_config(network=network, threshold=threshold)
+    return load_config(network=network, threshold=threshold, search_provider=provider)
 
 
 def _fail(exc: FaceChainError, code: int) -> None:
@@ -92,11 +93,12 @@ def search(
     image: Path = typer.Option(..., "--image", "-i", exists=True),
     threshold: float = typer.Option(None, "--threshold"),
     network: str = typer.Option(None, "--network"),
+    provider: str = typer.Option(None, "--provider"),
 ):
     """Scan, reverse-image-search, and face-verify candidates (no anchoring)."""
     from .pipeline import run as run_pipeline
 
-    cfg = _cfg(network, threshold)
+    cfg = _cfg(network, threshold, provider)
     try:
         result = run_pipeline(image, cfg)
     except NoFaceDetectedError as exc:
@@ -137,6 +139,10 @@ def run(
     camera: int = typer.Option(0, "--camera"),
     network: str = typer.Option(None, "--network"),
     threshold: float = typer.Option(None, "--threshold"),
+    provider: str = typer.Option(
+        None, "--provider",
+        help="google_lens (image matching) or facecheck (actual face search)",
+    ),
 ):
     """Full pipeline: scan -> search -> verify -> anchor on-chain.
 
@@ -148,7 +154,7 @@ def run(
     from .evidence import RECEIPT_JSON, evidence_hash, similarity_bps
     from .pipeline import run as run_pipeline
 
-    cfg = _cfg(network, threshold)
+    cfg = _cfg(network, threshold, provider)
 
     if capture_now:
         from .capture import capture_face

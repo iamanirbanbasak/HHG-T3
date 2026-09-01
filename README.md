@@ -121,6 +121,35 @@ shasum -a 256 artifacts/run-*/probe.jpg artifacts/run-*/post_text.txt
 cannot be exercised live; the rest of the pipeline is covered by the commands above and by
 `tests/test_end_to_end.py`.
 
+## Search backends
+
+The pipeline supports two, selected with `--provider` or `SEARCH_PROVIDER`.
+
+| | `google_lens` (default) | `facecheck` |
+|---|---|---|
+| What it does | matches **images** already in Google's index | runs **face recognition** over crawled social images |
+| Finds a face never published as this exact image | no | yes |
+| Needs a public image host | yes (imgbb hop) | no, direct upload |
+| Candidate images | fetched by URL, may 403 | inline base64, no fetch |
+| Cost | SerpAPI free tier | paid; `demo` mode is free |
+
+**This distinction matters and is easy to get wrong.** Google Lens is not a face search engine.
+Photograph yourself now and Lens has nothing to match, because that image has never been indexed
+— measured live: 120 candidates, 20 social, 19 face-verified, best cosine 0.2923, all rejected.
+That is the pipeline working correctly on an input with nothing findable behind it.
+
+For "scan a face, find that person's accounts", use `facecheck`:
+
+```bash
+facechain run --capture --provider facecheck --network local
+```
+
+`FACECHECK_DEMO=1` is the default so a misconfigured run cannot silently spend credits.
+
+**The provider's own score is never the verdict.** FaceCheck returns a 0–100 confidence; it is
+recorded as metadata only. Every candidate is still independently detected, embedded, and
+cosine-scored against the probe by this pipeline. The provider proposes; the embedding disposes.
+
 ## Which blockchain
 
 **Solidity 0.8.24**, compiled with `py-solc-x` — no Foundry, no Hardhat, no Node toolchain.

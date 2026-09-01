@@ -14,6 +14,7 @@ from typing import Literal
 from .errors import FaceChainError
 
 Network = Literal["local", "base-sepolia"]
+SearchProvider = Literal["google_lens", "facecheck"]
 
 DEFAULT_SOCIAL_DOMAINS: tuple[str, ...] = (
     "instagram.com",
@@ -48,6 +49,11 @@ class Config:
     contract_address: str | None = None
     serpapi_key: str | None = None
     imgbb_key: str | None = None
+    facecheck_key: str | None = None
+    # demo mode scans a reduced index and consumes no credits -- the default, so a misconfigured
+    # run cannot silently spend money
+    facecheck_demo: bool = True
+    search_provider: SearchProvider = "google_lens"
     threshold: float = 0.45
     social_domains: tuple[str, ...] = DEFAULT_SOCIAL_DOMAINS
     max_candidates: int = 20
@@ -95,5 +101,12 @@ def load_config(**overrides: object) -> Config:
         contract_address=os.environ.get("CONTRACT_ADDRESS"),
         serpapi_key=_secret(os.environ.get("SERPAPI_KEY")),
         imgbb_key=_secret(os.environ.get("IMGBB_KEY")),
+        facecheck_key=_secret(os.environ.get("FACECHECK_KEY")),
+        facecheck_demo=os.environ.get("FACECHECK_DEMO", "1") not in ("0", "false", "False"),
+        search_provider=str(
+            overrides.pop("search_provider", None)
+            or os.environ.get("SEARCH_PROVIDER")
+            or "google_lens"
+        ),  # type: ignore[arg-type]
     )
     return cfg.with_overrides(**overrides)

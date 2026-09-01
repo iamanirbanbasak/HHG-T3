@@ -16,8 +16,15 @@ from .config import Config
 from .search.lens import Candidate
 
 
-class LensSearch(Protocol):
-    def __call__(self, image_url: str, cfg: Config) -> list[Candidate]: ...
+class FaceSearch(Protocol):
+    """Takes a local image PATH, not a URL.
+
+    Each provider owns how it gets the image to the service: the Lens provider uploads to a
+    public host first because Lens needs a URL; FaceCheck posts the bytes directly. Hiding that
+    inside the provider keeps the imgbb hop out of the pipeline, where it never belonged.
+    """
+
+    def __call__(self, image: Path, cfg: Config) -> list[Candidate]: ...
 
 
 class ImageUpload(Protocol):
@@ -28,14 +35,27 @@ class ImageUpload(Protocol):
 class Providers:
     """Real implementations by default."""
 
-    lens_search: LensSearch
+    face_search: FaceSearch
     image_upload: ImageUpload
     fetch_image: Callable[..., Path]
 
 
-def default_providers() -> Providers:
-    from .search.fetch import fetch_image
+def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
+    """Host the image publicly, then reverse-image-search it."""
     from .search.lens import search
     from .search.uploader import upload
 
-    return Providers(lens_search=search, image_upload=upload, fetch_image=fetch_image)
+    return search(upload(image, cfg), cfg)
+
+
+def default_providers(cfg: Config | None = None) -> Providers:
+    from .search.fetch import fetch_image
+    from .search.uploader import upload
+
+    provider = google_lens_search
+    if cfg is not None and cfg.search_provider == "facecheck":
+        from .search.facecheck import search as facecheck_search
+
+        provider = facecheck_search
+
+    return Providers(face_search=provider, image_upload=upload, fetch_image=fetch_image)

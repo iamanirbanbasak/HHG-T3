@@ -50,12 +50,21 @@ def test_no_spike_directory_ships():
 
 def test_default_providers_are_the_real_ones():
     """Production defaults must resolve to the real network-calling implementations."""
-    from facechain.providers import default_providers
+    from facechain.config import Config
+    from facechain.providers import default_providers, google_lens_search
     from facechain.search.fetch import fetch_image
-    from facechain.search.lens import search
     from facechain.search.uploader import upload
 
-    p = default_providers()
-    assert p.lens_search is search
+    p = default_providers(Config())
+    assert p.face_search is google_lens_search
     assert p.image_upload is upload
     assert p.fetch_image is fetch_image
+
+
+def test_facecheck_provider_selected_by_config():
+    from facechain.config import Config
+    from facechain.providers import default_providers
+    from facechain.search.facecheck import search as facecheck_search
+
+    p = default_providers(Config(search_provider="facecheck"))
+    assert p.face_search is facecheck_search

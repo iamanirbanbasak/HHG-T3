@@ -71,7 +71,7 @@ class TestCandidateVerification:
 
         _patch_face(monkeypatch, lambda n: 0.9)
         provs, _ = make_fake_providers([])
-        provs = Providers(provs.lens_search, provs.image_upload, failing_fetch)
+        provs = Providers(provs.face_search, provs.image_upload, failing_fetch)
         cands = [candidate(f"https://x.com/a/{i}", f"https://cdn.test/{i}.jpg") for i in range(3)]
         assert verify_candidates(probe_vec, cands, tmp_path, cfg, provs) == []
 

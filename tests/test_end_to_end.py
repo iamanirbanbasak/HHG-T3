@@ -55,9 +55,8 @@ def test_full_run_then_verify_then_tamper(tmp_path, chain, providers_returning_t
     # 1-5: pipeline
     result = run_pipeline(FX / "faces_multi.jpg", cfg, providers=provs)
 
-    # the aligned crop AND the full photo were both uploaded and searched
-    assert calls["upload"] == ["probe_aligned.png", "probe.jpg"]
-    assert len(calls["search"]) == 2
+    # the aligned crop AND the full photo were both searched, crop first
+    assert calls["search"] == ["probe_aligned.png", "probe.jpg"]
     # the candidate was genuinely fetched and embedded
     assert len(calls["fetch"]) == 1
     assert result.top.cosine > 0.9
