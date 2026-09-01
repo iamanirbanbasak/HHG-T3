@@ -42,54 +42,101 @@ class TestContentSniffing:
         assert not looks_like_image(b"<!DOCTYPE html>")
 
 
-class _Stream:
-    def __init__(self, status, chunks):
-        self.status_code, self._chunks = status, chunks
+@pytest.fixture
+def mock_http(monkeypatch):
+    """Route fetch_image through real httpx machinery with a fake transport.
 
-    def __enter__(self):
-        return self
+    Deliberately NOT a monkeypatch of httpx.stream: mocking the call itself hid a real bug
+    (max_redirects is not a valid argument there). Here the genuine Client is constructed with
+    the real kwargs, so a signature error surfaces.
+    """
 
-    def __exit__(self, *a):
-        return False
+    def install(handler):
+        transport = httpx.MockTransport(handler)
+        original = httpx.Client
 
-    def iter_bytes(self, n=None):
-        yield from self._chunks
+        def factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "Client", factory)
+        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
+
+    return install
 
 
 class TestFetch:
-    def test_size_cap_enforced_during_streaming(self, monkeypatch, tmp_path):
+    def test_size_cap_enforced_during_streaming(self, mock_http, tmp_path):
         """The cap must abort mid-download, not after buffering the whole response."""
-        cfg = Config(max_image_bytes=1000)
-        big = [b"\xff\xd8\xff" + b"x" * 900, b"y" * 900, b"z" * 900]
-        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
-        monkeypatch.setattr(httpx, "stream", lambda *a, **k: _Stream(200, big))
+        body = b"\xff\xd8\xff" + b"x" * 5000
+        mock_http(lambda req: httpx.Response(200, content=body))
         with pytest.raises(CandidateFetchError) as e:
-            fetch_image("https://cdn.test/i.jpg", tmp_path / "o.jpg", cfg)
+            fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg",
+                        Config(max_image_bytes=1000))
         assert "size cap" in str(e.value)
 
-    def test_non_200_raises(self, monkeypatch, tmp_path):
-        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
-        monkeypatch.setattr(httpx, "stream", lambda *a, **k: _Stream(403, []))
+    def test_non_200_raises(self, mock_http, tmp_path):
+        mock_http(lambda req: httpx.Response(403))
         with pytest.raises(CandidateFetchError):
-            fetch_image("https://cdn.test/i.jpg", tmp_path / "o.jpg", Config())
+            fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
 
-    def test_non_image_body_raises(self, monkeypatch, tmp_path):
-        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
-        monkeypatch.setattr(httpx, "stream", lambda *a, **k: _Stream(200, [b"<html>"]))
+    def test_non_image_body_raises(self, mock_http, tmp_path):
+        mock_http(lambda req: httpx.Response(200, content=b"<!DOCTYPE html><html>"))
         with pytest.raises(CandidateFetchError):
-            fetch_image("https://cdn.test/i.jpg", tmp_path / "o.jpg", Config())
+            fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
 
-    def test_successful_fetch_writes_file(self, monkeypatch, tmp_path):
-        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
-        monkeypatch.setattr(httpx, "stream", lambda *a, **k: _Stream(200, [JPEG]))
-        out = fetch_image("https://cdn.test/i.jpg", tmp_path / "o.jpg", Config())
+    def test_successful_fetch_writes_file(self, mock_http, tmp_path):
+        mock_http(lambda req: httpx.Response(200, content=JPEG))
+        out = fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
         assert out.read_bytes() == JPEG
 
-    def test_timeout_raises_typed_error(self, monkeypatch, tmp_path):
-        def boom(*a, **k):
+    def test_sends_browser_user_agent(self, mock_http, tmp_path):
+        seen = {}
+
+        def handler(req):
+            seen["ua"] = req.headers.get("user-agent", "")
+            return httpx.Response(200, content=JPEG)
+
+        mock_http(handler)
+        fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
+        assert "Mozilla" in seen["ua"]
+
+    def test_timeout_raises_typed_error(self, mock_http, tmp_path):
+        def handler(req):
             raise httpx.TimeoutException("slow")
 
-        monkeypatch.setattr("facechain.search.fetch.assert_safe_url", lambda u: None)
-        monkeypatch.setattr(httpx, "stream", boom)
+        mock_http(handler)
         with pytest.raises(CandidateFetchError):
-            fetch_image("https://cdn.test/i.jpg", tmp_path / "o.jpg", Config())
+            fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
+
+
+class TestRealHttpxCompatibility:
+    """Guards against mock-hidden signature errors.
+
+    The unit tests above monkeypatch httpx, so they cannot detect that an argument does not exist
+    on the real API. This was a live bug: `max_redirects` was passed to httpx.stream(), which
+    accepts no such argument, and every candidate fetch failed in production while the mocked
+    tests stayed green.
+    """
+
+    def test_client_accepts_the_arguments_fetch_image_uses(self):
+        import httpx
+
+        from facechain.config import Config
+
+        cfg = Config()
+        # Constructing is enough: a bad kwarg raises TypeError here, not at request time.
+        with httpx.Client(
+            timeout=cfg.fetch_timeout_s, follow_redirects=True, max_redirects=3
+        ) as client:
+            assert client is not None
+
+    def test_stream_signature_rejects_max_redirects(self):
+        """Documents WHY the client is constructed explicitly."""
+        import inspect
+
+        import httpx
+
+        assert "max_redirects" not in inspect.signature(httpx.stream).parameters
+        assert "max_redirects" in inspect.signature(httpx.Client.__init__).parameters
+

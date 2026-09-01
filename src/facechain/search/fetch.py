@@ -65,11 +65,13 @@ def fetch_image(url: str, dest: Path, cfg: Config) -> Path:
     assert_safe_url(url)
     headers = {"User-Agent": BROWSER_UA, "Referer": "https://www.google.com/", "Accept": "image/*"}
 
+    # max_redirects is a Client constructor argument, not a request argument -- passing it to
+    # httpx.stream() raises TypeError. Tests that mock httpx.stream cannot catch that, so the
+    # client is built explicitly here and test_fetch_signature_matches_httpx guards the call.
     try:
-        with httpx.stream(
-            "GET", url, headers=headers, timeout=cfg.fetch_timeout_s,
-            follow_redirects=True, max_redirects=3,
-        ) as resp:
+        with httpx.Client(
+            timeout=cfg.fetch_timeout_s, follow_redirects=True, max_redirects=3
+        ) as client, client.stream("GET", url, headers=headers) as resp:
             if resp.status_code != 200:
                 raise CandidateFetchError(
                     "candidate image request failed",

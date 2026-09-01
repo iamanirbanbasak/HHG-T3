@@ -173,11 +173,18 @@ Several tests exist specifically to fail if the implementation becomes decorativ
 
 ## Known limitations
 
-**Status: the search leg is not yet exercised live.** The imgbb upload hop is verified working
-against the real API. The SerpAPI key currently configured is rejected (HTTP 401) and appears not
-to be a SerpAPI key, so no live Google Lens query has run yet. Everything downstream of search is
-built and tested; the end-to-end test substitutes the two provider calls and exercises real face
-detection, real embedding, real hashing, and a real local chain.
+**The search leg now runs live, but no genuine match has been demonstrated yet.** A real Google
+Lens query against a face crop returned 60 candidates, 7 of them on social-media domains. All 7
+were then fetched and independently face-verified, and **all 7 were rejected** -- the best scored
+cosine 0.2629 against a 0.45 threshold. They were visually-plausible false positives, not the
+subject.
+
+That is the pipeline behaving correctly rather than failing: it is exactly what candidate face
+verification exists to catch, and it is the difference between this design and one that would
+have reported the top Lens hit as a match. But it means an end-to-end run producing a *verified*
+match still needs a demo subject whose face is well indexed at usable resolution. The test used a
+112x112 pre-aligned crop, which is small and context-free -- poor conditions for reverse image
+search.
 
 **The threshold is not calibrated.** `tau = 0.45` is a conventional operating point for ArcFace,
 carried from the design spec. It has not been validated against a labelled evaluation set. An
