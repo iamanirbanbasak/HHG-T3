@@ -151,7 +151,10 @@ def _run_job(job: Job, payload: dict) -> None:
         if image is None:
             raise FaceChainError("no input image")
 
-        job.log(f"provider={cfg.search_provider}  network={cfg.network}  tau={cfg.threshold}", "dim")
+        from .providers import resolve_chain
+
+        chain = " -> ".join(n for n, _ in resolve_chain(cfg))
+        job.log(f"providers: {chain}   network={cfg.network}  tau={cfg.threshold}", "dim")
         job.log("detecting face and computing embedding...", "step")
 
         result = run_pipeline(image, cfg)
@@ -188,6 +191,10 @@ def _run_job(job: Job, payload: dict) -> None:
         survivors.extend((s.candidate.page_url, s.cosine) for s in result.expanded)
         accounts = group_accounts(survivors)
 
+        for a in result.attempts:
+            job.log(f"  {a['provider']}: {a['outcome'].replace('_', ' ')}"
+                    + (f" (best {a['best']})" if "best" in a else ""), "dim")
+        job.log(f"matched via {result.provider}", "ok")
         job.log(f"{len(survivors)} match(es) above threshold, "
                 f"across {len(accounts)} account(s)", "ok")
         for a in accounts:
@@ -265,6 +272,7 @@ def _run_job(job: Job, payload: dict) -> None:
             "record_id": rid,
             "tx": tx,
             "network": cfg.network,
+            "provider": result.provider,
             "contract": reg.address,
             "run_dir": str(result.run_dir),
             "verified_match": ok.matches,
@@ -318,6 +326,7 @@ def create_app():
         return {
             "provider": cfg.search_provider,
             "network": cfg.network,
+            "provider": result.provider,
             "threshold": cfg.threshold,
             "has_serpapi": bool(cfg.serpapi_key),
             "has_imgbb": bool(cfg.imgbb_key),

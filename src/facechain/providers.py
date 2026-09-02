@@ -51,6 +51,30 @@ def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
     return search(upload(image, cfg), cfg)
 
 
+def provider_by_name(name: str):
+    """Resolve one search backend by name."""
+    if name == "facecheck":
+        from .search.facecheck import search as fn
+        return fn
+    if name == "yandex":
+        from .search.yandex import search as fn
+        return fn
+    return google_lens_search
+
+
+def resolve_chain(cfg: Config) -> list[tuple[str, object]]:
+    """The ordered list of providers to try.
+
+    With fallback disabled, or when a provider is named explicitly, only that one is used -- an
+    explicit `--provider` is a choice, not a starting point.
+    """
+    if not cfg.provider_fallback:
+        return [(cfg.search_provider, provider_by_name(cfg.search_provider))]
+
+    chain = [cfg.search_provider] + [p for p in cfg.provider_chain if p != cfg.search_provider]
+    return [(name, provider_by_name(name)) for name in chain]
+
+
 def default_providers(cfg: Config | None = None) -> Providers:
     from .search.fetch import fetch_image, fetch_page
     from .search.uploader import upload

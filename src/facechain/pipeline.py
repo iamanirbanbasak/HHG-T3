@@ -21,7 +21,12 @@ from pathlib import Path
 import numpy as np
 
 from .config import Config
-from .errors import CandidateFetchError, NoVerifiedMatchError
+from .errors import (
+    CandidateFetchError,
+    FaceChainError,
+    NoVerifiedMatchError,
+    SearchProviderError,
+)
 from .evidence import (
     CANDIDATE_IMAGE,
     POST_TEXT,
@@ -36,7 +41,7 @@ from .evidence import (
 from .face.detect import detect_probe, load_image
 from .face.embed import embed, embedding_digest
 from .face.similarity import cosine
-from .providers import Providers, default_providers
+from .providers import Providers, default_providers, resolve_chain
 from .profiles import Account, group_accounts, handle_of, platform_of
 from .search.candidates import filter_social, normalise_url, registrable_host, union
 from .search.lens import Candidate
@@ -60,6 +65,9 @@ class RunResult:
     n_social: int
     n_verified: int
     scored: list[ScoredCandidate]
+    # Which backend produced the match, and what every attempted provider returned.
+    provider: str = ""
+    attempts: list[dict] = field(default_factory=list)
     # Social/profile URLs published on the face-verified page. Not independently scored.
     linked: list[Account] = field(default_factory=list)
     # Same-handle profiles on other platforms that independently cleared tau.
@@ -176,6 +184,9 @@ def run(
     fabricates a match, never lowers the threshold, and never falls back to a best-available
     candidate below tau.
     """
+    # An explicitly supplied Providers is a deliberate choice and wins outright: the chain is a
+    # default-path convenience, not something that overrides injection.
+    explicit = providers is not None
     providers = providers or default_providers(cfg)
     run_dir = new_run_dir(cfg)
     queried_at = utc_now()
@@ -201,27 +212,70 @@ def run(
         log.warning("head crop failed, falling back to the aligned crop: %s", exc)
         query_image = run_dir / PROBE_ALIGNED
 
-    # 3. search: the ALIGNED CROP is the primary query; the full photo widens recall only.
-    # The provider decides how the image reaches the service (public host vs direct upload).
-    crop_hits = providers.face_search(query_image, cfg)
-    photo_hits = providers.face_search(run_dir / PROBE_IMAGE, cfg)
+    # 3-4. Walk the provider chain until one yields a verified match.
+    #
+    # Each provider is a different INDEX, not a better model: Google Lens matches images already
+    # in Google's index, Yandex matches a different crawl that favours people-pages, FaceCheck
+    # runs actual face recognition over social images. If one index does not contain the subject,
+    # trying a better model over the same index cannot help -- trying another index can.
+    #
+    # Every candidate is still independently re-detected, re-embedded and cosine-scored here, so
+    # adding a noisy provider cannot introduce a false match. It can only add candidates that our
+    # own embedding then has to accept or reject.
+    chain = ([(cfg.search_provider, providers.face_search)] if explicit
+             else resolve_chain(cfg))
+    attempts: list[dict] = []
+    survivors: list[ScoredCandidate] = []
+    scored: list[ScoredCandidate] = []
+    all_cands: list[Candidate] = []
+    social: list[Candidate] = []
+    used_provider = chain[0][0]
 
-    all_cands = union(crop_hits, photo_hits)
-    social = filter_social(all_cands, cfg)
+    for name, search_fn in chain:
+        used_provider = name
+        try:
+            crop_hits = search_fn(query_image, cfg)
+            photo_hits = search_fn(run_dir / PROBE_IMAGE, cfg)
+        except (SearchProviderError, FaceChainError) as exc:
+            # A provider failing is NOT the same as it finding nothing. Record which happened,
+            # and keep going -- a missing key for one backend must not end the run.
+            log.warning("provider %s unavailable: %s", name, exc)
+            attempts.append({"provider": name, "outcome": "provider_error", "detail": str(exc)[:160]})
+            continue
 
-    # 4. independent face verification of every candidate
-    scored = verify_candidates(probe_vec, social, run_dir, cfg, providers)
-    survivors = [s for s in scored if s.cosine >= cfg.threshold]
+        all_cands = union(crop_hits, photo_hits)
+        social = filter_social(all_cands, cfg)
+        scored = verify_candidates(probe_vec, social, run_dir, cfg, providers)
+        survivors = [s for s in scored if s.cosine >= cfg.threshold]
+
+        attempts.append({
+            "provider": name,
+            "outcome": "verified_match" if survivors else "no_match_above_threshold",
+            "candidates": len(all_cands), "social": len(social), "scored": len(scored),
+            "verified": len(survivors),
+            "best": round(max((s.cosine for s in scored), default=0.0), 4),
+        })
+        if survivors:
+            break
+        log.info("provider %s found no verified match, trying the next", name)
+
+    if not survivors and attempts and all(a["outcome"] == "provider_error" for a in attempts):
+        raise SearchProviderError(
+            "every search provider failed; no search was actually performed",
+            {
+                "providers_tried": ", ".join(a["provider"] for a in attempts),
+                "details": "; ".join(a.get("detail", "") for a in attempts)[:400],
+            },
+        )
 
     if not survivors:
         raise NoVerifiedMatchError(
-            "no candidate cleared the similarity threshold",
+            "no candidate cleared the similarity threshold in any provider",
             {
-                "candidates": len(all_cands),
-                "social": len(social),
-                "scored": len(scored),
+                "providers_tried": ", ".join(a["provider"] for a in attempts) or "none",
                 "threshold": cfg.threshold,
-                "best": round(max((s.cosine for s in scored), default=0.0), 4),
+                "best": round(max((a.get("best", 0.0) for a in attempts), default=0.0), 4),
+                "attempts": attempts,
             },
         )
 
@@ -251,10 +305,12 @@ def run(
         threshold=cfg.threshold,
         queried_at=queried_at,
         captured_at=utc_now(),
+        provider=f"{used_provider}",
     )
     write_bundle(run_dir, bundle)
 
     return RunResult(
+        provider=used_provider, attempts=attempts,
         run_dir=run_dir, bundle=bundle, top=top,
         n_candidates=len(all_cands), n_social=len(social),
         n_verified=len(survivors), scored=scored, linked=linked, expanded=expanded,

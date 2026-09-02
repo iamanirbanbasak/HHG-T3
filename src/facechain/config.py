@@ -16,6 +16,11 @@ from .errors import FaceChainError
 Network = Literal["local", "base-sepolia"]
 SearchProvider = Literal["google_lens", "facecheck", "yandex"]
 
+# Tried in order until one yields a verified match. Google Lens first: it is API-backed, fastest
+# and most reliable. Yandex second because it is free and indexes people-pages Google misses.
+# FaceCheck last because it is the only one that can consume paid credits -- free before paid.
+DEFAULT_PROVIDER_CHAIN: tuple[str, ...] = ("google_lens", "yandex", "facecheck")
+
 DEFAULT_SOCIAL_DOMAINS: tuple[str, ...] = (
     "instagram.com",
     "x.com",
@@ -82,6 +87,9 @@ class Config:
     # run cannot silently spend money
     facecheck_demo: bool = True
     search_provider: SearchProvider = "google_lens"
+    # When True, a provider that finds no verified match falls through to the next in the chain.
+    provider_fallback: bool = True
+    provider_chain: tuple[str, ...] = DEFAULT_PROVIDER_CHAIN
     threshold: float = 0.45
     social_domains: tuple[str, ...] = DEFAULT_SOCIAL_DOMAINS
     profile_domains: tuple[str, ...] = DEFAULT_PROFILE_DOMAINS
@@ -132,6 +140,7 @@ def load_config(**overrides: object) -> Config:
         imgbb_key=_secret(os.environ.get("IMGBB_KEY")),
         facecheck_key=_secret(os.environ.get("FACECHECK_KEY")),
         facecheck_demo=os.environ.get("FACECHECK_DEMO", "1") not in ("0", "false", "False"),
+        provider_fallback=os.environ.get("PROVIDER_FALLBACK", "1") not in ("0", "false", "False"),
         search_provider=str(
             overrides.pop("search_provider", None)
             or os.environ.get("SEARCH_PROVIDER")

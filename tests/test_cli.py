@@ -91,8 +91,12 @@ class TestOutputDiscipline:
 
     def test_no_percentage_next_to_similarity_in_executable_code(self):
         src = Path(__file__).resolve().parents[1] / "src" / "facechain"
+        # `%` immediately followed by a format letter is a printf specifier, not a rendered
+        # percentage -- "%s cosine" is a log template, not a claim about confidence.
         bad = re.compile(
-            r"(cosine|similarity|score)[^\n]{0,40}[%]|[%][^\n]{0,20}(cosine|similarity)", re.I
+            r"(cosine|similarity|score)[^\n]{0,40}\d\s*%"
+            r"|\d\s*%[^\n]{0,20}(cosine|similarity)",
+            re.I,
         )
         hits = [
             (f.name, m.group(0))
