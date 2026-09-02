@@ -41,6 +41,8 @@ class Providers:
     # Optional: HTML fetch used to read social links off a face-verified portfolio page.
     # Tests leave this unset so the suite never opens a network socket.
     fetch_page: Callable[..., str] | None = None
+    # Optional: text search used to find LinkedIn profiles for a verified handle.
+    web_search: Callable[..., list] | None = None
 
 
 def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
@@ -54,6 +56,7 @@ def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
 def default_providers(cfg: Config | None = None) -> Providers:
     from .search.fetch import fetch_image, fetch_page
     from .search.uploader import upload
+    from .search.websearch import search_linkedin
 
     provider = google_lens_search
     if cfg is not None and cfg.search_provider == "facecheck":
@@ -67,5 +70,5 @@ def default_providers(cfg: Config | None = None) -> Providers:
 
     return Providers(
         face_search=provider, image_upload=upload,
-        fetch_image=fetch_image, fetch_page=fetch_page,
+        fetch_image=fetch_image, fetch_page=fetch_page, web_search=search_linkedin,
     )

@@ -141,11 +141,15 @@ def profile_guesses(handle: str, skip_platform: str) -> list[tuple[str, str, str
         ("youtube", f"https://www.youtube.com/@{h}", ""),
         ("reddit", f"https://www.reddit.com/user/{h}", ""),
         ("soundcloud", f"https://soundcloud.com/{h}", ""),
+        ("linkedin", f"https://www.linkedin.com/in/{h}", ""),
     ]
+    linkedin_ok = bool(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9\-]{0,98}[A-Za-z0-9])?", h))
     for platform, page, avatar in templates:
         if platform == skip_platform:
             continue
         if platform == "github" and not github_ok:
+            continue
+        if platform == "linkedin" and not linkedin_ok:
             continue
         out.append((platform, page, avatar))
     return out

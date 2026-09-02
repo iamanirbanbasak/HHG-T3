@@ -105,8 +105,10 @@ def test_skips_enrichment_when_fetch_page_is_unset(cfg: Config):
 def test_profile_guesses_skip_source_platform_and_invalid_github():
     gh = {p: page for p, page, _ in profile_guesses("jane", "instagram")}
     assert "github" in gh and gh["github"].endswith("/jane")
+    assert "linkedin" in gh and "/in/jane" in gh["linkedin"]
     assert all(p != "instagram" for p, _, _ in profile_guesses("jane", "instagram"))
     assert "github" not in {p for p, _, _ in profile_guesses("jane_doe", "instagram")}
+    assert "linkedin" not in {p for p, _, _ in profile_guesses("jane_doe", "instagram")}
 
 
 def test_og_image_reads_meta():

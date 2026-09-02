@@ -131,6 +131,11 @@ def _print_result(result, cfg) -> None:
     console.print(Panel(f"[bold]{result.top.candidate.page_url}\n"
                         f"cosine similarity {result.top.cosine:.4f}",
                         title="Selected match", border_style="green"))
+    if result.resolved_handle:
+        console.print(
+            f"[green]account[/green]  @{result.resolved_handle}  "
+            f"{result.resolved_profile or ''}"
+        )
     if result.linked:
         console.print(
             "[cyan]linked from verified page[/cyan] "

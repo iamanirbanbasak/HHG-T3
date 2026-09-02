@@ -72,11 +72,14 @@ def test_default_providers_are_the_real_ones():
     from facechain.search.fetch import fetch_image, fetch_page
     from facechain.search.uploader import upload
 
+    from facechain.search.websearch import search_linkedin
+
     p = default_providers(Config())
     assert p.face_search is google_lens_search
     assert p.image_upload is upload
     assert p.fetch_image is fetch_image
     assert p.fetch_page is fetch_page
+    assert p.web_search is search_linkedin
 
 
 def test_facecheck_provider_selected_by_config():

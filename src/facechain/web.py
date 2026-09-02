@@ -183,10 +183,25 @@ def _run_job(job: Job, payload: dict) -> None:
 
         from .profiles import group_accounts
 
-        survivors = [(s.candidate.page_url, s.cosine)
-                     for s in result.scored if s.cosine >= cfg.threshold]
+        survivors = []
+        for s in result.scored:
+            if s.cosine < cfg.threshold:
+                continue
+            url = s.candidate.page_url
+            if (
+                result.resolved_profile
+                and s.candidate.page_url == result.top.candidate.page_url
+            ):
+                url = result.resolved_profile
+            survivors.append((url, s.cosine))
         survivors.extend((s.candidate.page_url, s.cosine) for s in result.expanded)
         accounts = group_accounts(survivors)
+        if result.resolved_handle:
+            job.log(f"account  @{result.resolved_handle}  {result.resolved_profile}", "ok")
+            post = result.top.candidate.page_url
+            for a in accounts:
+                if a.handle == result.resolved_handle and post not in a.urls:
+                    a.urls.append(post)
 
         job.log(f"{len(survivors)} match(es) above threshold, "
                 f"across {len(accounts)} account(s)", "ok")
@@ -260,6 +275,8 @@ def _run_job(job: Job, payload: dict) -> None:
             "verified": result.n_verified,
             "rows": rows,
             "accounts": [_account_json(a) for a in accounts],
+            "resolved_handle": result.resolved_handle,
+            "resolved_profile": result.resolved_profile,
             "linked": [_account_json(a) for a in linked],
             "evidence_hash": "0x" + h.hex(),
             "record_id": rid,

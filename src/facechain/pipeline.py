@@ -64,6 +64,8 @@ class RunResult:
     linked: list[Account] = field(default_factory=list)
     # Same-handle profiles on other platforms that independently cleared tau.
     expanded: list[ScoredCandidate] = field(default_factory=list)
+    resolved_handle: str | None = None
+    resolved_profile: str | None = None
 
 
 def new_run_dir(cfg: Config) -> Path:
@@ -226,8 +228,12 @@ def run(
         )
 
     top = survivors[0]
+    from .search.permalink import resolve_owner
+
+    owner = resolve_owner(top.candidate, providers.fetch_page, cfg)
+    profile = Account(platform=platform_of(top.candidate.page_url), handle=owner).profile_url if owner else None
     linked = _linked_from_verified_page(top, survivors, cfg, providers)
-    expanded = _expand_same_handle(probe_vec, top, survivors, run_dir, cfg, providers)
+    expanded = _expand_same_handle(probe_vec, top, survivors, run_dir, cfg, providers, handle=owner)
     shutil.copyfile(top.image_path, run_dir / CANDIDATE_IMAGE)
 
     text = post_text_for(top.candidate) if post_text_for else _post_text(top.candidate)
@@ -258,6 +264,7 @@ def run(
         run_dir=run_dir, bundle=bundle, top=top,
         n_candidates=len(all_cands), n_social=len(social),
         n_verified=len(survivors), scored=scored, linked=linked, expanded=expanded,
+        resolved_handle=owner, resolved_profile=profile,
     )
 
 
@@ -312,15 +319,14 @@ def _expand_same_handle(
     run_dir: Path,
     cfg: Config,
     providers: Providers,
+    handle: str | None = None,
 ) -> list[ScoredCandidate]:
     """If a verified profile carries a handle, try that handle on other platforms.
 
-    Instagram does not publish GitHub/LinkedIn on its public page. The next honest
-    move is to treat the handle as a hypothesis, fetch the other profile's own photo,
-    and let cosine admit or reject it. A reused handle that belongs to someone else
-    fails the embedding and is dropped.
+    Instagram post permalinks do not include a handle. `handle` must already have been
+    resolved from provider text, oEmbed, or the page -- never invented from the shortcode.
     """
-    handle = handle_of(top.candidate.page_url)
+    handle = handle or handle_of(top.candidate.page_url)
     if not handle:
         return []
 
@@ -347,6 +353,31 @@ def _expand_same_handle(
         cands.append(Candidate(
             page_url=page, image_url=image_url, title=platform, source="handle",
         ))
+        known.add(normalise_url(page))
+
+    if providers.web_search is not None:
+        try:
+            found = providers.web_search(handle, cfg) or []
+        except Exception as exc:  # noqa: BLE001 - enrichment must not abort a verified run
+            log.warning("linkedin search failed: %s", exc)
+            found = []
+        for c in found:
+            if normalise_url(c.page_url) in known:
+                continue
+            image_url = c.image_url
+            if not image_url and providers.fetch_page is not None:
+                try:
+                    image_url = og_image(providers.fetch_page(c.page_url, cfg), c.page_url)
+                except Exception:  # noqa: BLE001
+                    image_url = ""
+            if not image_url:
+                continue
+            cands.append(Candidate(
+                page_url=c.page_url, image_url=image_url,
+                title=c.title, source="linkedin-search",
+                thumbnail_url=c.thumbnail_url,
+            ))
+            known.add(normalise_url(c.page_url))
 
     if not cands:
         return []
