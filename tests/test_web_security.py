@@ -108,3 +108,35 @@ class TestEndpoints:
         body = client.get("/").text
         assert "__CSRF_TOKEN__" not in body
         assert CSRF_TOKEN in body
+
+
+class TestConfigEndpoint:
+    """Regression: /api/config raised NameError because a careless edit injected
+    `result.provider` into it, where no `result` exists. Every endpoint is now smoke-tested."""
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from facechain.web import create_app
+
+        return TestClient(create_app())
+
+    def test_config_returns_200_and_expected_keys(self, client):
+        r = client.get("/api/config")
+        assert r.status_code == 200
+        assert set(r.json()) >= {
+            "provider", "network", "threshold", "has_serpapi", "has_imgbb", "has_facecheck",
+        }
+
+    def test_config_never_leaks_key_values(self, client):
+        body = r'{}'.format(client.get("/api/config").text)
+        assert "has_serpapi" in body
+        for v in ("sk-", "live_", "3ef94e"):
+            assert v not in body
+
+    def test_index_returns_200(self, client):
+        assert client.get("/").status_code == 200
+
+    def test_unknown_job_returns_404_not_500(self, client):
+        assert client.get("/api/job/deadbeef").status_code == 404

@@ -273,6 +273,7 @@ def _run_job(job: Job, payload: dict) -> None:
             "tx": tx,
             "network": cfg.network,
             "provider": result.provider,
+            "attempts": result.attempts,
             "contract": reg.address,
             "run_dir": str(result.run_dir),
             "verified_match": ok.matches,
@@ -286,8 +287,17 @@ def _run_job(job: Job, payload: dict) -> None:
         job.log(f"SearchProviderError: {exc}", "err")
         job.log("a provider failure is not the same as 'no results found'", "dim")
     except NoVerifiedMatchError as exc:
-        job.log(f"NoVerifiedMatchError: {exc}", "warn")
-        job.log("no candidate cleared the threshold. nothing was anchored.", "warn")
+        # `attempts` is structured data; printing the exception repr floods the UI with a dict.
+        job.log("no candidate cleared the threshold in any provider", "warn")
+        for a in exc.context.get("attempts") or []:
+            if a.get("outcome") == "provider_error":
+                job.log(f"  {a['provider']:<12} unavailable - {str(a.get('detail',''))[:64]}", "dim")
+            else:
+                job.log(
+                    f"  {a['provider']:<12} {a.get('candidates',0):>4} candidates -> "
+                    f"{a.get('social',0):>3} profiles -> {a.get('scored',0):>3} face-scored -> "
+                    f"best {a.get('best',0):.4f}", "dim")
+        job.log(f"threshold {exc.context.get('threshold')}; nothing was anchored.", "warn")
         job.log("this is the honest negative path, not an error.", "dim")
     except ChainError as exc:
         job.log(f"ChainError: {exc}", "err")
@@ -326,7 +336,6 @@ def create_app():
         return {
             "provider": cfg.search_provider,
             "network": cfg.network,
-            "provider": result.provider,
             "threshold": cfg.threshold,
             "has_serpapi": bool(cfg.serpapi_key),
             "has_imgbb": bool(cfg.imgbb_key),

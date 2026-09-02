@@ -11,6 +11,7 @@ from functools import lru_cache
 import contextlib
 import io
 import sys
+import warnings
 
 from ..errors import FaceChainError
 
@@ -65,6 +66,7 @@ def get_app():
         with _quiet_stdout():
             app = FaceAnalysis(name=PACK, providers=["CPUExecutionProvider"])
             app.prepare(ctx_id=-1, det_size=DET_SIZE)
+        _silence_upstream_warnings()
     except Exception as exc:  # noqa: BLE001
         raise FaceChainError("could not load face models", {"pack": PACK, "error": str(exc)}) from exc
 
@@ -75,3 +77,16 @@ def get_app():
 def load_count() -> int:
     """How many times the models were actually loaded. Used to assert single-load."""
     return _load_count
+
+
+def _silence_upstream_warnings() -> None:
+    """Mute FutureWarnings raised inside insightface itself.
+
+    insightface calls np.linalg.lstsq without rcond and uses a deprecated scikit-image estimate
+    API, emitting two warnings per aligned face. That is noise we cannot fix from here -- it is
+    upstream code -- and it drowns the CLI output the demo depends on. Scoped to insightface
+    modules so warnings from our own code still surface.
+    """
+    for module in (r"insightface\..*",):
+        warnings.filterwarnings("ignore", category=FutureWarning, module=module)
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module=module)

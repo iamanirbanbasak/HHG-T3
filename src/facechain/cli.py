@@ -538,6 +538,9 @@ def main() -> None:  # pragma: no cover
     interpreter shutdown and bypass os._exit entirely, which is precisely the case this guards.
     """
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    from .face.models import _silence_upstream_warnings
+
+    _silence_upstream_warnings()
     if os.environ.get("FACECHAIN_VERBOSE"):
         from .face.models import set_verbose
 
