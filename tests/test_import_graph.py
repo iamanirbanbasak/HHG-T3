@@ -50,6 +50,7 @@ def test_leaves_import_nothing_from_the_project(leaf):
 @pytest.mark.parametrize("layer", [
     "face/detect.py", "face/embed.py", "face/similarity.py",
     "search/lens.py", "search/uploader.py", "search/candidates.py", "search/fetch.py",
+    "search/page_links.py",
     "evidence.py", "chain/registry.py", "chain/compile.py",
 ])
 def test_lower_layers_never_import_pipeline_or_cli(layer):

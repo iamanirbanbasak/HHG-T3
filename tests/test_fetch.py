@@ -7,7 +7,7 @@ import pytest
 
 from facechain.config import Config
 from facechain.errors import CandidateFetchError
-from facechain.search.fetch import assert_safe_url, fetch_image, looks_like_image
+from facechain.search.fetch import assert_safe_url, fetch_image, fetch_page, looks_like_image
 
 JPEG = b"\xff\xd8\xff\xe0" + b"padding"
 
@@ -108,6 +108,23 @@ class TestFetch:
         mock_http(handler)
         with pytest.raises(CandidateFetchError):
             fetch_image("https://cdn.example.com/i.jpg", tmp_path / "o.jpg", Config())
+
+
+class TestFetchPage:
+    def test_returns_decoded_html(self, mock_http):
+        mock_http(lambda req: httpx.Response(200, content=b"<html>ok</html>"))
+        assert fetch_page("https://example.com/p", Config()) == "<html>ok</html>"
+
+    def test_size_cap(self, mock_http):
+        mock_http(lambda req: httpx.Response(200, content=b"x" * (2 * 1024 * 1024 + 10)))
+        with pytest.raises(CandidateFetchError) as e:
+            fetch_page("https://example.com/p", Config())
+        assert "size cap" in str(e.value)
+
+    def test_non_200_raises(self, mock_http):
+        mock_http(lambda req: httpx.Response(403))
+        with pytest.raises(CandidateFetchError):
+            fetch_page("https://example.com/p", Config())
 
 
 class TestRealHttpxCompatibility:

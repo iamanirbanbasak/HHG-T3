@@ -104,6 +104,19 @@ _jobs: dict[str, Job] = {}
 _lock = threading.Lock()
 
 
+def _account_json(a) -> dict[str, Any]:
+    payload = {
+        "display": a.display,
+        "platform": a.platform,
+        "handle": a.handle,
+        "profile_url": a.profile_url,
+        "urls": list(a.urls),
+        "origin": a.origin,
+        "cosine": None if a.origin == "linked" else round(a.best_cosine, 4),
+    }
+    return payload
+
+
 def _cfg(payload: dict) -> Config:
     from .cli import _load_dotenv
 
@@ -156,6 +169,12 @@ def _run_job(job: Job, payload: dict) -> None:
             }
             for s in result.scored[:12]
         ]
+        for s in result.expanded:
+            rows.append({
+                "url": s.candidate.page_url,
+                "cosine": round(s.cosine, 4),
+                "pass": True,
+            })
         for r in rows:
             job.log(
                 f"  {r['cosine']:.4f}  {'PASS  ' if r['pass'] else 'reject'}  {r['url'][:64]}",
@@ -166,6 +185,7 @@ def _run_job(job: Job, payload: dict) -> None:
 
         survivors = [(s.candidate.page_url, s.cosine)
                      for s in result.scored if s.cosine >= cfg.threshold]
+        survivors.extend((s.candidate.page_url, s.cosine) for s in result.expanded)
         accounts = group_accounts(survivors)
 
         job.log(f"{len(survivors)} match(es) above threshold, "
@@ -174,6 +194,30 @@ def _run_job(job: Job, payload: dict) -> None:
             job.log(f"  {a.display}  best cosine {a.best_cosine:.4f}", "ok")
             for u in a.urls:
                 job.log(f"      {u}", "dim")
+
+        if result.expanded:
+            job.log(
+                f"{len(result.expanded)} further account(s) from the verified handle "
+                f"(each independently face-scored)",
+                "info",
+            )
+            for s in result.expanded:
+                job.log(
+                    f"  {s.cosine:.4f}  PASS   {s.candidate.page_url[:64]}",
+                    "ok",
+                )
+
+        linked = result.linked
+        if linked:
+            job.log(
+                f"{len(linked)} profile(s) linked from the verified page "
+                f"(not independently face-scored)",
+                "info",
+            )
+            for a in linked:
+                job.log(f"  {a.display}", "ok")
+                for u in a.urls:
+                    job.log(f"      {u}", "dim")
 
         job.log("anchoring evidence on-chain...", "step")
         w3 = make_web3(cfg)
@@ -215,14 +259,8 @@ def _run_job(job: Job, payload: dict) -> None:
             "social": result.n_social,
             "verified": result.n_verified,
             "rows": rows,
-            "accounts": [
-                {
-                    "display": a.display, "platform": a.platform, "handle": a.handle,
-                    "profile_url": a.profile_url, "urls": a.urls,
-                    "cosine": round(a.best_cosine, 4),
-                }
-                for a in accounts
-            ],
+            "accounts": [_account_json(a) for a in accounts],
+            "linked": [_account_json(a) for a in linked],
             "evidence_hash": "0x" + h.hex(),
             "record_id": rid,
             "tx": tx,

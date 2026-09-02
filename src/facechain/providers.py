@@ -38,6 +38,9 @@ class Providers:
     face_search: FaceSearch
     image_upload: ImageUpload
     fetch_image: Callable[..., Path]
+    # Optional: HTML fetch used to read social links off a face-verified portfolio page.
+    # Tests leave this unset so the suite never opens a network socket.
+    fetch_page: Callable[..., str] | None = None
 
 
 def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
@@ -49,7 +52,7 @@ def google_lens_search(image: Path, cfg: Config) -> list[Candidate]:
 
 
 def default_providers(cfg: Config | None = None) -> Providers:
-    from .search.fetch import fetch_image
+    from .search.fetch import fetch_image, fetch_page
     from .search.uploader import upload
 
     provider = google_lens_search
@@ -62,4 +65,7 @@ def default_providers(cfg: Config | None = None) -> Providers:
 
         provider = yandex_search
 
-    return Providers(face_search=provider, image_upload=upload, fetch_image=fetch_image)
+    return Providers(
+        face_search=provider, image_upload=upload,
+        fetch_image=fetch_image, fetch_page=fetch_page,
+    )

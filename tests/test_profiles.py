@@ -12,6 +12,7 @@ class TestPlatform:
         ("https://au.linkedin.com/in/jane-doe", "linkedin"),
         ("https://www.tiktok.com/@user/video/1", "tiktok"),
         ("https://bsky.app/profile/a.bsky.social", "bsky"),
+        ("https://github.com/jane", "github"),
         ("https://example.org/x", "example.org"),
     ])
     def test_platform_detection(self, url, expected):
@@ -26,6 +27,8 @@ class TestHandle:
         ("https://www.linkedin.com/in/jane-doe-123/", "jane-doe-123"),
         ("https://www.tiktok.com/@janedoe/video/1", "janedoe"),
         ("https://www.reddit.com/user/janedoe/", "janedoe"),
+        ("https://github.com/janedoe", "janedoe"),
+        ("https://github.com/janedoe/some-repo", "janedoe"),
     ])
     def test_extracts_handle(self, url, expected):
         assert handle_of(url) == expected
@@ -35,6 +38,7 @@ class TestHandle:
         "https://www.instagram.com/reel/DcTqtCuytGq/",
         "https://www.linkedin.com/pub/dir/+/Farsee",
         "https://www.youtube.com/shorts/JBvyPIxgyM8",
+        "https://github.com/features/copilot",
     ])
     def test_returns_none_rather_than_guessing(self, url):
         """Inventing a handle would attach a fabricated identity to a real score."""
@@ -67,6 +71,11 @@ class TestGrouping:
     def test_profile_url_derived_where_possible(self):
         a = group_accounts([("https://x.com/jane/status/1", 0.8)])[0]
         assert a.profile_url == "https://x.com/jane"
+
+    def test_github_profile_url(self):
+        a = group_accounts([("https://github.com/jane/repo", 0.8)])[0]
+        assert a.platform == "github" and a.handle == "jane"
+        assert a.profile_url == "https://github.com/jane"
 
     def test_no_profile_url_when_handle_unknown(self):
         a = group_accounts([("https://www.instagram.com/p/AAA/", 0.8)])[0]

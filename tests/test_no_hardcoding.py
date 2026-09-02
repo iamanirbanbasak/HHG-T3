@@ -69,13 +69,14 @@ def test_default_providers_are_the_real_ones():
     """Production defaults must resolve to the real network-calling implementations."""
     from facechain.config import Config
     from facechain.providers import default_providers, google_lens_search
-    from facechain.search.fetch import fetch_image
+    from facechain.search.fetch import fetch_image, fetch_page
     from facechain.search.uploader import upload
 
     p = default_providers(Config())
     assert p.face_search is google_lens_search
     assert p.image_upload is upload
     assert p.fetch_image is fetch_image
+    assert p.fetch_page is fetch_page
 
 
 def test_facecheck_provider_selected_by_config():

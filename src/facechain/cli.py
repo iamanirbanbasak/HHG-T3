@@ -131,6 +131,30 @@ def _print_result(result, cfg) -> None:
     console.print(Panel(f"[bold]{result.top.candidate.page_url}\n"
                         f"cosine similarity {result.top.cosine:.4f}",
                         title="Selected match", border_style="green"))
+    if result.linked:
+        console.print(
+            "[cyan]linked from verified page[/cyan] "
+            "[dim](published there; not independently face-scored)[/dim]"
+        )
+        for a in result.linked:
+            console.print(f"  {a.display}")
+            seen: list[str] = []
+            if a.profile_url:
+                seen.append(a.profile_url)
+            for u in a.urls:
+                if u not in seen:
+                    seen.append(u)
+            for u in seen:
+                console.print(f"      {u}")
+    if result.expanded:
+        console.print(
+            "[green]same handle on other platforms[/green] "
+            "[dim](independently face-scored)[/dim]"
+        )
+        for s in result.expanded:
+            console.print(
+                f"  {s.candidate.page_url}  cosine {s.cosine:.4f}"
+            )
 
 
 @app.command()

@@ -108,7 +108,8 @@
   .acct .name{color:var(--green); font-size:13px}
   .acct .links{margin-top:5px; display:flex; flex-direction:column; gap:2px}
   .acct .links a{font-size:11.5px; word-break:break-all}
-  .acct .sc{color:var(--amber); font-variant-numeric:tabular-nums; white-space:nowrap}
+  .acct.linked{border-left-color:var(--amber)}
+  .acct .sc.linked{color:var(--dim); font-size:11px}
   .sec{margin:18px 0 8px; color:var(--dim); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase}
 
   table{width:100%; border-collapse:collapse; margin-top:14px; font-size:12px}
@@ -280,6 +281,28 @@ function card(h,v,cls){
 }
 function verdict(text,good){ return el("span","verdict "+(good?"good":"bad"),text); }
 
+function accountList(accounts, linked){
+  const wrap=el("div","accounts");
+  for(const a of accounts){
+    const row=el("div", linked?"acct linked":"acct");
+    const who=el("div","who");
+    who.appendChild(el("div","name",a.display));
+    const links=el("div","links");
+    const seen=new Set();
+    const add=u=>{ const h=safeUrl(u); if(!h||seen.has(h)) return; seen.add(h);
+      const link=el("a",null,u); link.href=h; link.target="_blank";
+      link.rel="noopener noreferrer"; links.appendChild(link); };
+    if(a.profile_url) add(a.profile_url);
+    for(const u of a.urls) add(u);
+    who.appendChild(links);
+    row.appendChild(who);
+    const score = linked || a.cosine == null ? "from page" : Number(a.cosine).toFixed(4);
+    row.appendChild(el("div", linked?"sc linked":"sc", score));
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
 function render(r){
   out.innerHTML="";
 
@@ -298,24 +321,12 @@ function render(r){
 
   if(r.accounts && r.accounts.length){
     out.appendChild(el("div","sec","accounts found ("+r.accounts.length+")"));
-    const wrap=el("div","accounts");
-    for(const a of r.accounts){
-      const row=el("div","acct");
-      const who=el("div","who");
-      who.appendChild(el("div","name",a.display));
-      const links=el("div","links");
-      const seen=new Set();
-      const add=u=>{ const h=safeUrl(u); if(!h||seen.has(h)) return; seen.add(h);
-        const link=el("a",null,u); link.href=h; link.target="_blank";
-        link.rel="noopener noreferrer"; links.appendChild(link); };
-      if(a.profile_url) add(a.profile_url);
-      for(const u of a.urls) add(u);
-      who.appendChild(links);
-      row.appendChild(who);
-      row.appendChild(el("div","sc",a.cosine.toFixed(4)));
-      wrap.appendChild(row);
-    }
-    out.appendChild(wrap);
+    out.appendChild(accountList(r.accounts, false));
+  }
+
+  if(r.linked && r.linked.length){
+    out.appendChild(el("div","sec","linked from verified page ("+r.linked.length+")"));
+    out.appendChild(accountList(r.linked, true));
   }
 
   out.appendChild(el("div","sec","all candidates scored"));

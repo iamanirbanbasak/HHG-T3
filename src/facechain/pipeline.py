@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import shutil
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +37,8 @@ from .face.detect import detect_probe, load_image
 from .face.embed import embed, embedding_digest
 from .face.similarity import cosine
 from .providers import Providers, default_providers
-from .search.candidates import filter_social, registrable_host, union
+from .profiles import Account, group_accounts, handle_of, platform_of
+from .search.candidates import filter_social, normalise_url, registrable_host, union
 from .search.lens import Candidate
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,10 @@ class RunResult:
     n_social: int
     n_verified: int
     scored: list[ScoredCandidate]
+    # Social/profile URLs published on the face-verified page. Not independently scored.
+    linked: list[Account] = field(default_factory=list)
+    # Same-handle profiles on other platforms that independently cleared tau.
+    expanded: list[ScoredCandidate] = field(default_factory=list)
 
 
 def new_run_dir(cfg: Config) -> Path:
@@ -221,6 +226,8 @@ def run(
         )
 
     top = survivors[0]
+    linked = _linked_from_verified_page(top, survivors, cfg, providers)
+    expanded = _expand_same_handle(probe_vec, top, survivors, run_dir, cfg, providers)
     shutil.copyfile(top.image_path, run_dir / CANDIDATE_IMAGE)
 
     text = post_text_for(top.candidate) if post_text_for else _post_text(top.candidate)
@@ -250,8 +257,109 @@ def run(
     return RunResult(
         run_dir=run_dir, bundle=bundle, top=top,
         n_candidates=len(all_cands), n_social=len(social),
-        n_verified=len(survivors), scored=scored,
+        n_verified=len(survivors), scored=scored, linked=linked, expanded=expanded,
     )
+
+
+def _linked_from_verified_page(
+    top: ScoredCandidate,
+    survivors: list[ScoredCandidate],
+    cfg: Config,
+    providers: Providers,
+) -> list[Account]:
+    """Read socials published on the face-verified page, including one link-in-bio hop.
+
+    Instagram's public HTML usually contains none of these -- unlike a Devfolio page --
+    so this often returns nothing for an Instagram match. Same-handle expansion is a
+    separate step and still has to pass the embedding.
+    """
+    if providers.fetch_page is None:
+        return []
+
+    from .search.page_links import extract_hub_links, extract_profile_links
+
+    page = top.candidate.page_url
+    try:
+        html = providers.fetch_page(page, cfg)
+    except Exception as exc:  # noqa: BLE001 - enrichment must not abort a verified run
+        log.warning("could not read verified page for linked profiles: %s", exc)
+        return []
+
+    urls = extract_profile_links(html, page, cfg)
+    for hub in extract_hub_links(html, page):
+        try:
+            hub_html = providers.fetch_page(hub, cfg)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("could not read link-in-bio page: %s", exc)
+            continue
+        urls.extend(extract_profile_links(hub_html, hub, cfg))
+
+    known = {normalise_url(s.candidate.page_url) for s in survivors}
+    urls = [u for u in urls if normalise_url(u) not in known]
+    if not urls:
+        return []
+
+    accounts = group_accounts([(u, 0.0) for u in urls])
+    for a in accounts:
+        a.origin = "linked"
+    return accounts
+
+
+def _expand_same_handle(
+    probe_vec,
+    top: ScoredCandidate,
+    survivors: list[ScoredCandidate],
+    run_dir: Path,
+    cfg: Config,
+    providers: Providers,
+) -> list[ScoredCandidate]:
+    """If a verified profile carries a handle, try that handle on other platforms.
+
+    Instagram does not publish GitHub/LinkedIn on its public page. The next honest
+    move is to treat the handle as a hypothesis, fetch the other profile's own photo,
+    and let cosine admit or reject it. A reused handle that belongs to someone else
+    fails the embedding and is dropped.
+    """
+    handle = handle_of(top.candidate.page_url)
+    if not handle:
+        return []
+
+    from .search.lens import Candidate
+    from .search.page_links import og_image, profile_guesses
+
+    known = {normalise_url(s.candidate.page_url) for s in survivors}
+    cands: list[Candidate] = []
+    for platform, page, avatar in profile_guesses(handle, platform_of(top.candidate.page_url)):
+        if normalise_url(page) in known:
+            continue
+        image_url = avatar
+        if not image_url:
+            if providers.fetch_page is None:
+                continue
+            try:
+                html = providers.fetch_page(page, cfg)
+            except Exception as exc:  # noqa: BLE001
+                log.info("same-handle %s unreachable: %s", page, exc)
+                continue
+            image_url = og_image(html, page)
+        if not image_url:
+            continue
+        cands.append(Candidate(
+            page_url=page, image_url=image_url, title=platform, source="handle",
+        ))
+
+    if not cands:
+        return []
+
+    scored = verify_candidates(probe_vec, cands, run_dir / "handle-expand", cfg, providers)
+    admitted = [s for s in scored if s.cosine >= cfg.threshold]
+    for s in scored:
+        log.info(
+            "same-handle %s cosine %.4f %s",
+            s.candidate.page_url, s.cosine,
+            "PASS" if s.cosine >= cfg.threshold else "reject",
+        )
+    return admitted
 
 
 def _post_text(cand: Candidate) -> str:

@@ -30,12 +30,20 @@ HANDLE_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("facebook", re.compile(r"^/([A-Za-z0-9.]{5,60})/?$")),
     ("reddit", re.compile(r"^/(?:user|u)/([A-Za-z0-9_\-]{3,30})")),
     ("bsky", re.compile(r"^/profile/([A-Za-z0-9.\-]{3,120})")),
+    ("github", re.compile(
+        r"^/([A-Za-z0-9](?:[A-Za-z0-9\-]{0,37}[A-Za-z0-9])?)(?:/[^/]+)?/?$"
+    )),
+    ("gitlab", re.compile(
+        r"^/([A-Za-z0-9](?:[A-Za-z0-9_\-.]{0,253}[A-Za-z0-9])?)(?:/[^/]+)?/?$"
+    )),
+    ("soundcloud", re.compile(r"^/([A-Za-z0-9_\-]{3,50})/?$")),
 ]
 
 PLATFORM_NAMES = {
     "instagram": "Instagram", "x": "X", "twitter": "X", "linkedin": "LinkedIn",
     "tiktok": "TikTok", "threads": "Threads", "youtube": "YouTube",
     "facebook": "Facebook", "reddit": "Reddit", "bsky": "Bluesky",
+    "github": "GitHub", "gitlab": "GitLab", "soundcloud": "SoundCloud",
 }
 
 
@@ -45,6 +53,8 @@ class Account:
     handle: str | None
     urls: list[str] = field(default_factory=list)
     best_cosine: float = 0.0
+    # "face" = independently embedded and scored. "linked" = published on a face-verified page.
+    origin: str = "face"
 
     @property
     def display(self) -> str:
@@ -67,6 +77,9 @@ class Account:
             "facebook": f"https://www.facebook.com/{h}/",
             "reddit": f"https://www.reddit.com/user/{h}/",
             "bsky": f"https://bsky.app/profile/{h}",
+            "github": f"https://github.com/{h}",
+            "gitlab": f"https://gitlab.com/{h}",
+            "soundcloud": f"https://soundcloud.com/{h}",
         }.get(self.platform)
 
 
@@ -89,7 +102,12 @@ def handle_of(url: str) -> str | None:
         return None
 
     # Reserved path segments that look like handles but are not.
-    reserved = {"p", "reel", "reels", "explore", "posts", "pub", "dir", "shorts", "watch", "video"}
+    reserved = {
+        "p", "reel", "reels", "explore", "posts", "pub", "dir", "shorts", "watch", "video",
+        "about", "features", "login", "signup", "settings", "orgs", "marketplace", "topics",
+        "collections", "events", "sponsors", "notifications", "issues", "pulls", "search",
+        "new", "dashboard", "pricing", "enterprise", "trending", "blog", "apps", "org",
+    }
     for key, pattern in HANDLE_PATTERNS:
         if key != platform:
             continue

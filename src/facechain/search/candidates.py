@@ -33,6 +33,21 @@ def registrable_host(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+def is_core_social(url: str, cfg: Config) -> bool:
+    """True only for the strict social-media set, not portfolio/profile platforms.
+
+    A Devfolio or GitHub hit can be a genuine face match while every Instagram/LinkedIn
+    *image* the search returned is a different person. Those are different outcomes.
+    """
+    host = registrable_host(url)
+    if not host:
+        return False
+    for domain in cfg.social_domains:
+        if host == domain or host.endswith("." + domain):
+            return True
+    return False
+
+
 def is_social(url: str, cfg: Config) -> bool:
     """True for a page where a person plausibly has a public presence.
 

@@ -101,3 +101,51 @@ def fetch_image(url: str, dest: Path, cfg: Config) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     return dest
+
+
+PAGE_CAP = 2 * 1024 * 1024
+
+
+def fetch_page(url: str, cfg: Config) -> str:
+    """Download a page's HTML so we can read the social links it publishes.
+
+    Same SSRF and size-cap posture as image fetch. A failed page read is a skipped enrichment
+    step, not a failed run -- the caller logs CandidateFetchError and continues.
+    """
+    assert_safe_url(url)
+    headers = {
+        "User-Agent": BROWSER_UA,
+        "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    }
+    cap = PAGE_CAP
+    try:
+        with httpx.Client(
+            timeout=cfg.fetch_timeout_s, follow_redirects=True, max_redirects=3
+        ) as client, client.stream("GET", url, headers=headers) as resp:
+            if resp.status_code != 200:
+                raise CandidateFetchError(
+                    "page request failed",
+                    {"status": resp.status_code, "url": url[:200]},
+                )
+            total = 0
+            chunks: list[bytes] = []
+            for chunk in resp.iter_bytes(65536):
+                total += len(chunk)
+                if total > cap:
+                    raise CandidateFetchError(
+                        "page exceeds size cap",
+                        {"cap": cap, "url": url[:200]},
+                    )
+                chunks.append(chunk)
+            encoding = resp.encoding or "utf-8"
+    except CandidateFetchError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise CandidateFetchError("page timed out", {"url": url[:200]}) from exc
+    except httpx.HTTPError as exc:
+        raise CandidateFetchError("page fetch failed", {"url": url[:200]}) from exc
+
+    data = b"".join(chunks)
+    if not data:
+        raise CandidateFetchError("empty page", {"url": url[:200]})
+    return data.decode(encoding, errors="replace")
