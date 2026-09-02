@@ -124,9 +124,15 @@ def _print_result(result, cfg) -> None:
             f"[green]PASS" if ok else f"[dim]reject",
         )
     console.print(t)
+    tried = " -> ".join(
+        f"{a['provider']}({a['outcome'].replace('_', ' ')})" for a in result.attempts
+    )
+    if tried:
+        console.print(f"[dim]providers: {tried}")
     console.print(
-        f"candidates={result.n_candidates}  social={result.n_social}  "
-        f"face-verified={result.n_verified}  threshold={cfg.threshold} (cosine, not a percentage)"
+        f"matched via [bold]{result.provider}[/]  candidates={result.n_candidates}  "
+        f"social={result.n_social}  face-verified={result.n_verified}  "
+        f"threshold={cfg.threshold} (cosine, not a percentage)"
     )
     console.print(Panel(f"[bold]{result.top.candidate.page_url}\n"
                         f"cosine similarity {result.top.cosine:.4f}",
@@ -171,7 +177,11 @@ def run(
     threshold: float = typer.Option(None, "--threshold"),
     provider: str = typer.Option(
         None, "--provider",
-        help="google_lens (image matching) or facecheck (actual face search)",
+        help="first backend to try: google_lens, yandex, or facecheck. "
+             "Others are tried in turn unless --no-fallback.",
+    ),
+    no_fallback: bool = typer.Option(
+        False, "--no-fallback", help="Use only the named provider; do not try the others."
     ),
 ):
     """Full pipeline: scan -> search -> verify -> anchor on-chain.
@@ -185,6 +195,8 @@ def run(
     from .pipeline import run as run_pipeline
 
     cfg = _cfg(network, threshold, provider)
+    if no_fallback:
+        cfg = cfg.with_overrides(provider_fallback=False)
 
     if capture_now:
         from .capture import capture_face
@@ -531,6 +543,9 @@ def main() -> None:  # pragma: no cover
     interpreter shutdown and bypass os._exit entirely, which is precisely the case this guards.
     """
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    from .face.models import _silence_upstream_warnings
+
+    _silence_upstream_warnings()
     if os.environ.get("FACECHAIN_VERBOSE"):
         from .face.models import set_verbose
 

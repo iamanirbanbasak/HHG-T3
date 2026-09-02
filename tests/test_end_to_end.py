@@ -98,6 +98,12 @@ def test_no_verified_match_anchors_nothing(tmp_path):
 
 
 def test_provider_failure_propagates_and_is_not_an_empty_result(tmp_path):
+    """HC-17 under a fallback chain.
+
+    When every provider errors we never actually searched, so the result must be
+    SearchProviderError -- not NoVerifiedMatchError, which would claim we looked and found
+    nothing.
+    """
     provs, _ = make_fake_providers([])
     provs = Providers(failing_search(500), provs.image_upload, provs.fetch_image)
     cfg = Config(network="local", artifacts_dir=str(tmp_path))
