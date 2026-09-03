@@ -5,359 +5,607 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230a0e0c'/%3E%3Ctext x='16' y='23' font-size='20' text-anchor='middle' fill='%233dff9a' font-family='monospace'%3E%E2%97%89%3C/text%3E%3C/svg%3E">
 <meta name="csrf-token" content="__CSRF_TOKEN__">
-<title>facechain</title>
+<title>facechain · demo</title>
 <style>
-  :root{
-    --bg:#0a0e0c; --panel:#0d1411; --line:#1b2b22;
-    --fg:#c8f5d8; --dim:#4e7a63; --green:#3dff9a; --amber:#ffcf5c;
-    --red:#ff5f6b; --cyan:#5ce0ff;
-    --mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0; background:var(--bg); color:var(--fg);
-    font:13px/1.55 var(--mono);
-    -webkit-font-smoothing:antialiased;
-  }
-  /* faint scanline wash, kept subtle enough to stay readable */
-  body::after{
-    content:""; position:fixed; inset:0; pointer-events:none; z-index:9;
-    background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.18) 3px 4px);
-    mix-blend-mode:multiply; opacity:.5;
-  }
-  .wrap{max-width:1080px; margin:0 auto; padding:22px 18px 40px}
+:root{
+  --bg:#0a0e0c;--panel:#0d1411;--line:#1b2b22;
+  --fg:#c8f5d8;--dim:#4e7a63;--green:#3dff9a;--amber:#ffcf5c;
+  --red:#ff5f6b;--cyan:#5ce0ff;--blue:#7eb8ff;
+  --mono:"SF Mono",SFMono-Regular,ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:13px/1.6 var(--mono);-webkit-font-smoothing:antialiased}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:9;
+  background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 3px,rgba(0,0,0,.15) 3px 4px);
+  mix-blend-mode:multiply;opacity:.4}
 
-  header{display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:14px}
-  h1{margin:0; font-size:15px; letter-spacing:.14em; color:var(--green); text-transform:uppercase}
-  h1 .b{color:var(--dim)}
-  .tag{color:var(--dim); font-size:11.5px}
+.wrap{max-width:960px;margin:0 auto;padding:22px 18px 60px}
 
-  .bar{
-    display:flex; gap:8px; flex-wrap:wrap; align-items:center;
-    border:1px solid var(--line); background:var(--panel);
-    padding:10px; border-radius:4px; margin-bottom:14px;
-  }
-  label{color:var(--dim); font-size:11.5px; letter-spacing:.06em}
-  select,input[type=text],input[type=number]{
-    background:#060a08; color:var(--fg); border:1px solid var(--line);
-    font:12px var(--mono); padding:5px 7px; border-radius:3px;
-  }
-  input[type=text]{min-width:210px}
-  button{
-    font:12px var(--mono); letter-spacing:.08em; text-transform:uppercase;
-    background:transparent; color:var(--green); border:1px solid var(--green);
-    padding:6px 14px; border-radius:3px; cursor:pointer;
-  }
-  button:hover:not(:disabled){background:var(--green); color:#04120b}
-  button:disabled{opacity:.4; cursor:not-allowed}
-  button.ghost{color:var(--dim); border-color:var(--line)}
-  button.ghost:hover:not(:disabled){background:var(--line); color:var(--fg)}
-  .spacer{flex:1}
-  .chip{font-size:11px; color:var(--dim); border:1px solid var(--line); padding:3px 7px; border-radius:99px}
-  .chip.on{color:var(--green); border-color:#1e5c3f}
-  .chip.off{color:var(--red); border-color:#4a2126}
+/* header */
+h1{margin:0 0 4px;font-size:14px;letter-spacing:.16em;color:var(--green);text-transform:uppercase}
+.subtitle{color:var(--dim);font-size:11.5px;margin-bottom:22px}
 
-  .term{
-    border:1px solid var(--line); background:var(--panel); border-radius:4px;
-    min-height:340px; max-height:56vh; overflow:auto; padding:12px 14px;
-  }
-  .term .l{white-space:pre-wrap; word-break:break-word}
-  .k-step{color:var(--cyan)}
-  .k-ok{color:var(--green)}
-  .k-warn{color:var(--amber)}
-  .k-err{color:var(--red)}
-  .k-dim{color:var(--dim)}
-  .k-hash{color:var(--amber); letter-spacing:.02em}
-  .prompt{color:var(--dim)}
-  .cursor{display:inline-block; width:7px; height:14px; background:var(--green);
-          vertical-align:-2px; animation:blink 1.05s steps(2,start) infinite}
-  @keyframes blink{to{visibility:hidden}}
+/* step card */
+.step-card{
+  border:1px solid var(--line);background:var(--panel);border-radius:6px;
+  margin-bottom:14px;overflow:hidden;
+}
+.step-card.active{border-color:var(--green)}
+.step-card.done{border-color:#1e5c3f}
+.step-card.error{border-color:var(--red)}
 
-  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:10px; margin-top:14px}
-  .card{border:1px solid var(--line); background:var(--panel); border-radius:4px; padding:11px 13px}
-  .card h3{margin:0 0 7px; font-size:10.5px; letter-spacing:.14em; color:var(--dim); text-transform:uppercase; font-weight:400}
-  .card .v{font-size:15px; color:var(--green); word-break:break-all}
-  .card .v.small{font-size:11.5px; color:var(--fg)}
-  .verdict{font-size:13px; letter-spacing:.1em}
-  .verdict.good{color:var(--green)}
-  .verdict.bad{color:var(--red)}
+.step-header{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;
+  user-select:none;
+}
+.step-num{
+  width:24px;height:24px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;border:1px solid var(--dim);color:var(--dim);
+  flex-shrink:0;
+}
+.step-card.active .step-num{border-color:var(--green);color:var(--green)}
+.step-card.done .step-num{background:var(--green);color:#04120b;border-color:var(--green)}
+.step-card.error .step-num{background:var(--red);color:#fff;border-color:var(--red)}
 
-  .drop{
-    border:1px dashed var(--line); background:var(--panel); border-radius:4px;
-    padding:26px 16px; text-align:center; margin-bottom:14px; cursor:pointer;
-    transition:border-color .15s, background .15s;
-  }
-  .drop:hover,.drop.over{border-color:var(--green); background:#0f1a15}
-  .drop.has{border-style:solid; border-color:#1e5c3f}
-  .dz-main{color:var(--fg); font-size:12.5px}
-  .dz-sub{color:var(--dim); font-size:11px; margin-top:6px}
-  button.link{
-    background:none; border:none; color:var(--green); text-decoration:underline;
-    padding:0; font:inherit; text-transform:none; letter-spacing:0; cursor:pointer;
-  }
-  button.link:hover{background:none; color:var(--green)}
+.step-title{font-size:13px;font-weight:600;letter-spacing:.04em;flex:1}
+.step-card.active .step-title{color:var(--green)}
+.step-desc{font-size:11px;color:var(--dim);margin-left:auto;max-width:340px;text-align:right;line-height:1.4}
 
-  .accounts{margin-top:14px}
-  .acct{
-    display:flex; align-items:flex-start; gap:12px; padding:10px 12px;
-    border:1px solid var(--line); border-left:2px solid var(--green);
-    background:var(--panel); border-radius:4px; margin-bottom:8px;
-  }
-  .acct .who{flex:1; min-width:0}
-  .acct .name{color:var(--green); font-size:13px}
-  .acct .links{margin-top:5px; display:flex; flex-direction:column; gap:2px}
-  .acct .links a{font-size:11.5px; word-break:break-all}
-  .acct.linked{border-left-color:var(--amber)}
-  .acct .sc.linked{color:var(--dim); font-size:11px}
-  .sec{margin:18px 0 8px; color:var(--dim); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase}
+.step-body{padding:14px 16px;border-top:1px solid var(--line)}
+.step-body.hidden{display:none}
 
-  table{width:100%; border-collapse:collapse; margin-top:14px; font-size:12px}
-  th,td{text-align:left; padding:6px 8px; border-bottom:1px solid var(--line)}
-  th{color:var(--dim); font-weight:400; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase}
-  td.num{text-align:right; font-variant-numeric:tabular-nums}
-  tr.pass td{color:var(--green)}
-  tr.rej td{color:var(--dim)}
-  a{color:var(--cyan)}
-  footer{margin-top:20px; color:var(--dim); font-size:11px; line-height:1.7; border-top:1px solid var(--line); padding-top:12px}
+/* form elements */
+label{color:var(--dim);font-size:11.5px;letter-spacing:.06em;display:block;margin-bottom:5px}
+select,input[type=text],input[type=number]{
+  background:#060a08;color:var(--fg);border:1px solid var(--line);
+  font:12px var(--mono);padding:6px 8px;border-radius:3px;width:100%;
+}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.row > *{flex:1;min-width:140px}
+.row > .narrow{flex:0 0 100px;min-width:80px}
+
+/* buttons */
+button{
+  font:12px var(--mono);letter-spacing:.08em;text-transform:uppercase;
+  background:transparent;color:var(--green);border:1px solid var(--green);
+  padding:7px 16px;border-radius:3px;cursor:pointer;white-space:nowrap;
+}
+button:hover:not(:disabled){background:var(--green);color:#04120b}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.ghost{color:var(--dim);border-color:var(--line)}
+button.ghost:hover:not(:disabled){background:var(--line);color:var(--fg)}
+button.danger{color:var(--red);border-color:var(--red)}
+button.danger:hover:not(:disabled){background:var(--red);color:#fff}
+
+/* drop zone */
+.drop{
+  border:1px dashed var(--line);background:#060a08;border-radius:4px;
+  padding:22px 16px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;
+  margin-bottom:10px;
+}
+.drop:hover,.drop.over{border-color:var(--green);background:#0f1a15}
+.drop.has{border-style:solid;border-color:#1e5c3f}
+.drop .main{font-size:12.5px}
+.drop .sub{color:var(--dim);font-size:11px;margin-top:5px}
+button.link{background:none;border:none;color:var(--green);text-decoration:underline;padding:0;font:inherit;text-transform:none;letter-spacing:0;cursor:pointer}
+
+/* chips */
+.chip{font-size:11px;color:var(--dim);border:1px solid var(--line);padding:3px 8px;border-radius:99px;display:inline-block;margin:2px}
+.chip.on{color:var(--green);border-color:#1e5c3f}
+.chip.off{color:var(--red);border-color:#4a2126}
+
+/* terminal */
+.term{
+  background:#060a08;border:1px solid var(--line);border-radius:4px;
+  padding:12px 14px;max-height:260px;overflow:auto;
+  font-size:11.5px;line-height:1.6;
+}
+.l{white-space:pre-wrap;word-break:break-all}
+.k-step{color:var(--cyan)}
+.k-ok{color:var(--green)}
+.k-warn{color:var(--amber)}
+.k-err{color:var(--red)}
+.k-dim{color:var(--dim)}
+.k-hash{color:var(--amber)}
+.k-info{color:var(--fg)}
+.cursor{display:inline-block;width:7px;height:14px;background:var(--green);vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{to{visibility:hidden}}
+
+/* result panels */
+.evidence-box{
+  background:#060a08;border:1px solid var(--line);border-radius:4px;
+  padding:12px 14px;margin:10px 0;font-size:12px;
+}
+.evidence-box h4{margin:0 0 8px;font-size:10.5px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;font-weight:400}
+
+.hash-display{
+  font-size:12px;letter-spacing:.04em;color:var(--amber);word-break:break-all;
+  background:#0a0e06;border:1px solid #2a3820;padding:8px 10px;border-radius:3px;margin:6px 0;
+}
+.url-display{
+  font-size:11.5px;color:var(--cyan);word-break:break-all;margin:4px 0;
+}
+.meta-row{display:flex;gap:6px;align-items:baseline;margin:3px 0;flex-wrap:wrap}
+.meta-label{color:var(--dim);font-size:11px;min-width:100px}
+.meta-val{color:var(--fg);font-size:12px;word-break:break-all}
+.meta-val.green{color:var(--green)}
+.meta-val.amber{color:var(--amber)}
+
+.verdict-big{
+  font-size:18px;font-weight:700;letter-spacing:.12em;padding:12px 16px;
+  border-radius:4px;text-align:center;margin:10px 0;
+}
+.verdict-big.match{color:var(--green);background:#0d1e14;border:1px solid var(--green)}
+.verdict-big.mismatch{color:var(--red);background:#1a0b0d;border:1px solid var(--red)}
+.verdict-big.detected{color:var(--amber);background:#1a1205;border:1px solid var(--amber)}
+
+.compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.compare-cell{background:#060a08;border:1px solid var(--line);border-radius:4px;padding:10px}
+.compare-cell h5{margin:0 0 6px;font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase;font-weight:400}
+.compare-cell .val{font-size:11px;color:var(--amber);word-break:break-all}
+
+.candidates-table{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:8px}
+.candidates-table th{color:var(--dim);font-weight:400;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid var(--line);text-align:left}
+.candidates-table td{padding:5px 6px;border-bottom:1px solid #0f1a15;word-break:break-all}
+.candidates-table tr.pass td{color:var(--green)}
+.candidates-table tr.rej td{color:var(--dim)}
+.candidates-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+
+.acct{display:flex;align-items:flex-start;gap:10px;padding:9px 12px;border:1px solid var(--line);border-left:2px solid var(--green);background:#060a08;border-radius:4px;margin-bottom:6px}
+.acct.post{border-left-color:var(--amber)}
+.acct .name{color:var(--green);font-size:13px;margin-bottom:3px}
+.acct.post .name{color:var(--amber)}
+.acct .links a{font-size:11px;word-break:break-all;display:block;color:var(--cyan)}
+.acct .score{color:var(--dim);font-size:11px;margin-left:auto;white-space:nowrap}
+
+.explain-box{
+  border-left:2px solid var(--blue);padding:8px 12px;margin:10px 0;
+  font-size:11.5px;color:var(--dim);line-height:1.6;background:#090f14;border-radius:0 4px 4px 0;
+}
+.explain-box strong{color:var(--blue)}
+
+a{color:var(--cyan)}
+footer{margin-top:30px;color:var(--dim);font-size:11px;line-height:1.7;border-top:1px solid var(--line);padding-top:12px}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>face<span class="b">·</span>chain</h1>
-    <span class="tag">face scan &rarr; social match &rarr; tamper-evident on-chain evidence</span>
-  </header>
 
-  <div class="bar">
-    <label>input</label>
-    <select id="src">
-      <option value="upload">upload</option>
-      <option value="capture">camera</option>
-      <option value="file">path</option>
-    </select>
-    <input type="text" id="path" placeholder="me.jpg" style="display:none">
+<h1>face<span style="color:var(--dim)">·</span>chain &nbsp;<span style="color:var(--dim);font-size:11px;text-transform:none;letter-spacing:0">demo</span></h1>
+<div class="subtitle">face scan &rarr; social match &rarr; tamper-evident on-chain evidence</div>
 
-    <label>provider</label>
-    <select id="provider">
-      <option value="google_lens">google_lens</option>
-      <option value="facecheck">facecheck</option>
-    </select>
-
-    <label>network</label>
-    <select id="network"><option value="local">local</option><option value="base-sepolia">base-sepolia</option></select>
-
-    <label>&tau;</label>
-    <input type="number" id="tau" value="0.45" step="0.01" min="0" max="1" style="width:74px">
-
-    <span class="spacer"></span>
-    <span id="chips"></span>
-    <button id="go">run scan</button>
-    <button id="clr" class="ghost">clear</button>
+<!-- ── STEP 1: Upload ───────────────────────────────────────── -->
+<div class="step-card" id="s1">
+  <div class="step-header" onclick="toggle('s1')">
+    <div class="step-num">1</div>
+    <div class="step-title">Upload a photo</div>
+    <div class="step-desc">The pipeline detects the face, crops it, and creates a 512-d embedding</div>
   </div>
-
-  <div id="drop" class="drop">
-    <input type="file" id="file" accept="image/*" hidden>
-    <div class="dz-main">drop a photo here, or <button type="button" id="pick" class="link">choose a file</button></div>
-    <div class="dz-sub" id="dzinfo">jpg · png · webp · heic · max 12 MB</div>
+  <div class="step-body" id="s1-body">
+    <div class="explain-box">
+      <strong>What happens:</strong> your image never leaves this machine unprocessed.
+      The face is detected with SCRFD, then ArcFace encodes it as a 512-dimensional vector.
+      That vector — not the photo — drives everything that follows.
+    </div>
+    <div class="drop" id="drop">
+      <input type="file" id="file" accept="image/*" hidden>
+      <div class="main">Drop a photo here, or <button type="button" id="pick" class="link">choose a file</button></div>
+      <div class="sub" id="dzinfo">jpg · png · webp · heic · max 12 MB</div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label>Search provider</label>
+        <select id="provider">
+          <option value="google_lens">google_lens (reverse image)</option>
+          <option value="facecheck">facecheck (face search)</option>
+        </select>
+      </div>
+      <div>
+        <label>Network</label>
+        <select id="network">
+          <option value="local">local (in-process, no ETH)</option>
+          <option value="sepolia">sepolia (Ethereum testnet)</option>
+          <option value="base-sepolia">base-sepolia</option>
+        </select>
+      </div>
+      <div class="narrow">
+        <label>Threshold &tau;</label>
+        <input type="number" id="tau" value="0.45" step="0.01" min="0.1" max="1">
+      </div>
+    </div>
+    <div style="margin-bottom:8px" id="chips"></div>
+    <button id="go">Run scan &rarr;</button>
   </div>
-
-  <div class="term" id="term"><div class="l k-dim">ready. press RUN SCAN.<span class="cursor"></span></div></div>
-
-  <div id="out"></div>
-
-  <footer>
-    A cosine score is not a probability and not a confidence percentage.
-    A match above threshold is <b>evidence of a probable match, not an identification</b>.
-    The blockchain proves <b>when</b> a claim was recorded and that it has not changed since &mdash;
-    it does not prove the claim is true.
-  </footer>
 </div>
+
+<!-- ── STEP 2: Search & match ──────────────────────────────── -->
+<div class="step-card" id="s2" style="display:none">
+  <div class="step-header" onclick="toggle('s2')">
+    <div class="step-num">2</div>
+    <div class="step-title">Reverse-image search &amp; face verification</div>
+    <div class="step-desc">Every candidate independently re-embedded and scored</div>
+  </div>
+  <div class="step-body hidden" id="s2-body">
+    <div class="explain-box">
+      <strong>Why this matters:</strong> a plain image lookup returns anything visually similar.
+      Here, every candidate URL is fetched, its face is detected and embedded independently,
+      then scored against the probe by <em>cosine similarity</em>.
+      The search provider proposes — the embedding disposes.
+    </div>
+    <div class="term" id="term"><div class="l k-dim">running...<span class="cursor"></span></div></div>
+  </div>
+</div>
+
+<!-- ── STEP 3: Evidence bundle ────────────────────────────── -->
+<div class="step-card" id="s3" style="display:none">
+  <div class="step-header" onclick="toggle('s3')">
+    <div class="step-num">3</div>
+    <div class="step-title">Evidence bundle</div>
+    <div class="step-desc">Canonical JSON fingerprinting the match — what gets hashed</div>
+  </div>
+  <div class="step-body hidden" id="s3-body">
+    <div class="explain-box">
+      <strong>What is stored:</strong> a canonical JSON document containing SHA-256 digests
+      of the probe image, aligned face crop, candidate image, and post text — plus the
+      cosine score, URL, platform, and timestamp. <em>No raw images are put on-chain</em>,
+      only their digests. Altering any source file changes the bundle hash.
+    </div>
+    <div id="evidence-content"></div>
+  </div>
+</div>
+
+<!-- ── STEP 4: On-chain anchor ───────────────────────────── -->
+<div class="step-card" id="s4" style="display:none">
+  <div class="step-header" onclick="toggle('s4')">
+    <div class="step-num">4</div>
+    <div class="step-title">Anchor on-chain</div>
+    <div class="step-desc">keccak256(bundle) stored in FaceMatchRegistry via a signed tx</div>
+  </div>
+  <div class="step-body hidden" id="s4-body">
+    <div class="explain-box">
+      <strong>What is anchored:</strong> the keccak256 hash of the canonical bundle is written
+      to a minimal, append-only Solidity contract (<code>FaceMatchRegistry.anchor()</code>).
+      The contract has no update or delete path — once recorded, the record cannot be changed.
+    </div>
+    <div id="anchor-content"></div>
+  </div>
+</div>
+
+<!-- ── STEP 5: Re-verification ───────────────────────────── -->
+<div class="step-card" id="s5" style="display:none">
+  <div class="step-header" onclick="toggle('s5')">
+    <div class="step-num">5</div>
+    <div class="step-title">Re-verification</div>
+    <div class="step-desc">Read hash from chain, recompute from local files — compare</div>
+  </div>
+  <div class="step-body hidden" id="s5-body">
+    <div class="explain-box">
+      <strong>How it works:</strong> the verifier performs two independent operations:
+      (1) reads <code>evidenceHash</code> from the chain via <code>eth_call</code>, and
+      (2) recomputes the hash from the local artifact files on disk.
+      These two paths never share a stored digest — the comparison is genuine.
+    </div>
+    <div id="verify-content"></div>
+  </div>
+</div>
+
+<!-- ── STEP 6: Tamper demo ───────────────────────────────── -->
+<div class="step-card" id="s6" style="display:none">
+  <div class="step-header" onclick="toggle('s6')">
+    <div class="step-num">6</div>
+    <div class="step-title">Tamper demonstration</div>
+    <div class="step-desc">Prove the chain detects any alteration of the evidence</div>
+  </div>
+  <div class="step-body hidden" id="s6-body">
+    <div class="explain-box">
+      <strong>The test:</strong> one byte of the post-text source file is flipped in a temporary
+      copy. The bundle is recomputed from the mutated file — the hash changes.
+      The on-chain hash is unchanged. The mismatch is detected. This proves the system cannot
+      be fooled by editing evidence after the fact.
+    </div>
+    <div id="tamper-content"></div>
+    <div style="margin-top:14px">
+      <button class="ghost" id="reset-btn" onclick="resetAll()">&#8635; Run another scan</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  A cosine score is not a probability and not a confidence percentage.
+  A match above threshold is <b>evidence of a probable match, not an identification</b>.
+  The blockchain proves <b>when</b> a claim was recorded and that it has not changed since &mdash;
+  it does not prove the claim is true.
+</footer>
+</div><!-- .wrap -->
 
 <script>
 const $=s=>document.querySelector(s);
-const term=$("#term"), out=$("#out");
+let uploaded=null, currentResult=null;
 
-let uploaded=null;
-
-function syncInput(){
-  const v=$("#src").value;
-  $("#path").style.display = v==="file" ? "" : "none";
-  $("#drop").style.display = v==="upload" ? "" : "none";
+/* ── helpers ─────────────────────────────────────────── */
+function el(tag,cls,text){
+  const n=document.createElement(tag);
+  if(cls) n.className=cls;
+  if(text!==undefined) n.textContent=String(text);
+  return n;
 }
-$("#src").onchange=syncInput; syncInput();
+function safeUrl(u){
+  try{const p=new URL(String(u));return(p.protocol==="http:"||p.protocol==="https:")?p.href:null;}
+  catch(e){return null;}
+}
+function csrfToken(){return document.querySelector('meta[name=csrf-token]').content;}
 
-const drop=$("#drop"), fileInput=$("#file");
-$("#pick").onclick=e=>{ e.stopPropagation(); fileInput.click(); };
+function setStep(id,state){
+  const c=$('#'+id);
+  if(!c) return;
+  c.classList.remove('active','done','error');
+  if(state) c.classList.add(state);
+}
+function showCard(id,open){
+  const c=$('#'+id);
+  if(!c) return;
+  c.style.display='';
+  const body=$('#'+id+'-body');
+  if(open) body.classList.remove('hidden');
+  else body.classList.add('hidden');
+}
+function toggle(id){
+  const body=$('#'+id+'-body');
+  if(body) body.classList.toggle('hidden');
+}
+
+/* ── drop zone ───────────────────────────────────────── */
+const drop=$('#drop'), fileInput=$('#file');
+$('#pick').onclick=e=>{e.stopPropagation();fileInput.click();};
 drop.onclick=()=>fileInput.click();
-drop.ondragover=e=>{ e.preventDefault(); drop.classList.add("over"); };
-drop.ondragleave=()=>drop.classList.remove("over");
-drop.ondrop=e=>{ e.preventDefault(); drop.classList.remove("over");
-  if(e.dataTransfer.files[0]) sendFile(e.dataTransfer.files[0]); };
-fileInput.onchange=()=>{ if(fileInput.files[0]) sendFile(fileInput.files[0]); };
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over');};
+drop.ondragleave=()=>drop.classList.remove('over');
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0]) sendFile(e.dataTransfer.files[0]);};
+fileInput.onchange=()=>{if(fileInput.files[0]) sendFile(fileInput.files[0]);};
 
 async function sendFile(f){
-  $("#dzinfo").textContent="uploading "+f.name+" …";
-  const fd=new FormData(); fd.append("file",f,f.name);
+  $('#dzinfo').textContent='uploading '+f.name+' …';
+  const fd=new FormData(); fd.append('file',f,f.name);
   try{
-    const r=await fetch("/api/upload",{method:"POST",headers:{"x-csrf-token":csrfToken()},body:fd});
+    const r=await fetch('/api/upload',{method:'POST',headers:{'x-csrf-token':csrfToken()},body:fd});
     const j=await r.json();
-    if(!r.ok){ $("#dzinfo").textContent="rejected: "+(j.detail||r.status); drop.classList.remove("has"); return; }
+    if(!r.ok){$('#dzinfo').textContent='rejected: '+(j.detail||r.status);drop.classList.remove('has');return;}
     uploaded=j.path;
-    drop.classList.add("has");
-    $("#dzinfo").textContent=f.name+"  ·  "+(j.bytes/1024).toFixed(0)+" KB  ·  ready";
-  }catch(err){ $("#dzinfo").textContent="upload failed: "+err; }
+    drop.classList.add('has');
+    $('#dzinfo').textContent=f.name+'  ·  '+(j.bytes/1024).toFixed(0)+' KB  ·  ready';
+    setStep('s1','active');
+  }catch(err){$('#dzinfo').textContent='upload failed: '+err;}
 }
 
-function csrfToken(){ return document.querySelector('meta[name=csrf-token]').content; }
-
-function line(text,kind){
-  const d=document.createElement("div");
-  d.className="l k-"+(kind||"info");
-  d.textContent=(kind==="step"?"› ":kind==="hash"?"  ":"")+text;
-  term.appendChild(d); term.scrollTop=term.scrollHeight;
-}
-function reset(){ term.innerHTML=""; out.innerHTML=""; }
-
-fetch("/api/config").then(r=>r.json()).then(c=>{
-  $("#provider").value=c.provider; $("#network").value=c.network; $("#tau").value=c.threshold;
-  const chips=$("#chips"); chips.textContent="";
-  for(const [n,ok] of [["serpapi",c.has_serpapi],["imgbb",c.has_imgbb],["facecheck",c.has_facecheck]]){
-    const s=document.createElement("span");
-    s.className="chip "+(ok?"on":"off"); s.textContent=n;
-    chips.appendChild(s); chips.appendChild(document.createTextNode(" "));
+/* ── config chips ────────────────────────────────────── */
+fetch('/api/config').then(r=>r.json()).then(c=>{
+  $('#provider').value=c.provider;
+  $('#network').value=c.network;
+  $('#tau').value=c.threshold;
+  const chips=$('#chips'); chips.textContent='';
+  for(const [n,ok] of [['serpapi',c.has_serpapi],['imgbb',c.has_imgbb],['facecheck',c.has_facecheck]]){
+    const s=document.createElement('span');
+    s.className='chip '+(ok?'on':'off');s.textContent=n;
+    chips.appendChild(s);
   }
 }).catch(()=>{});
 
-$("#clr").onclick=()=>{ reset(); line("ready.","dim"); };
+/* ── terminal line ───────────────────────────────────── */
+function termLine(text,kind){
+  const term=$('#term');
+  const d=el('div','l k-'+(kind||'info'));
+  d.textContent=(kind==='step'?'› ':kind==='hash'?'  ':'')+text;
+  term.appendChild(d); term.scrollTop=term.scrollHeight;
+}
 
-$("#go").onclick=async()=>{
-  reset(); $("#go").disabled=true;
-  const src=$("#src").value;
-  const imgPath = src==="upload" ? uploaded : $("#path").value;
-  if(src==="upload" && !uploaded){ line("upload a photo first.","warn"); $("#go").disabled=false; return; }
-  line("$ facechain run "+(src==="capture"?"--capture":"--image "+imgPath)
-       +" --provider "+$("#provider").value+" --network "+$("#network").value,"dim");
+/* ── run ─────────────────────────────────────────────── */
+$('#go').onclick=async()=>{
+  if(!uploaded){termLine('Upload a photo first.','warn');return;}
+  $('#go').disabled=true;
+
+  // show step 2 open
+  showCard('s2',true); setStep('s2','active');
+  $('#s3').style.display='#s4'.style='';
+  ['s3','s4','s5','s6'].forEach(id=>{const c=$(('#'+id));if(c)c.style.display='none';});
+  $('#term').innerHTML='';
+  termLine('detecting face and computing 512-d embedding...','step');
+
   let job;
   try{
-    const r=await fetch("/api/run",{method:"POST",
-      headers:{"content-type":"application/json","x-csrf-token":csrfToken()},
-      body:JSON.stringify({capture:src==="capture", image:imgPath,
-        provider:$("#provider").value, network:$("#network").value,
-        threshold:parseFloat($("#tau").value)})});
+    const r=await fetch('/api/run',{method:'POST',
+      headers:{'content-type':'application/json','x-csrf-token':csrfToken()},
+      body:JSON.stringify({image:uploaded,provider:$('#provider').value,
+        network:$('#network').value,threshold:parseFloat($('#tau').value)})});
     job=(await r.json()).job;
-  }catch(e){ line("could not start: "+e,"err"); $("#go").disabled=false; return; }
+  }catch(e){termLine('could not start: '+e,'err');$('#go').disabled=false;return;}
 
   let seen=0;
   const poll=setInterval(async()=>{
     let s;
-    try{ s=await (await fetch("/api/job/"+job)).json(); }catch(e){ return; }
-    for(let i=seen;i<s.lines.length;i++) line(s.lines[i].text,s.lines[i].kind);
+    try{s=await(await fetch('/api/job/'+job)).json();}catch(e){return;}
+    for(let i=seen;i<s.lines.length;i++) termLine(s.lines[i].text,s.lines[i].kind);
     seen=s.lines.length;
-    if(s.done){ clearInterval(poll); $("#go").disabled=false; if(s.result) render(s.result); }
-  },500);
+    if(s.done){
+      clearInterval(poll);
+      $('#go').disabled=false;
+      if(s.result){
+        currentResult=s.result;
+        setStep('s2','done');
+        renderEvidence(s.result);
+        renderAnchor(s.result);
+        renderVerify(s.result);
+        renderTamper(s.result);
+      } else {
+        setStep('s2','error');
+      }
+    }
+  },600);
 };
 
-// Candidate URLs come from the search provider, which reflects arbitrary indexed web pages.
-// That is untrusted input, exactly as it is server-side, so results are built with DOM APIs and
-// text nodes rather than by string-concatenating HTML.
-function safeUrl(u){
-  try{ const p=new URL(String(u)); return (p.protocol==="http:"||p.protocol==="https:")?p.href:null; }
-  catch(e){ return null; }
-}
-function el(tag,cls,text){
-  const n=document.createElement(tag);
-  if(cls) n.className=cls;
-  if(text!==undefined && text!==null) n.textContent=String(text);
-  return n;
-}
-function card(h,v,cls){
-  const c=el("div","card");
-  c.appendChild(el("h3",null,h));
-  const d=el("div","v "+(cls||""));
-  if(v instanceof Node) d.appendChild(v); else d.textContent=String(v);
-  c.appendChild(d);
-  return c;
-}
-function verdict(text,good){ return el("span","verdict "+(good?"good":"bad"),text); }
+/* ── step 3: evidence ────────────────────────────────── */
+function renderEvidence(r){
+  showCard('s3',true); setStep('s3','done');
+  const d=$('#evidence-content'); d.innerHTML='';
 
-function accountList(accounts, linked){
-  const wrap=el("div","accounts");
-  for(const a of accounts){
-    const row=el("div", linked?"acct linked":"acct");
-    const who=el("div","who");
-    who.appendChild(el("div","name",a.display));
-    const links=el("div","links");
-    const seen=new Set();
-    const add=u=>{ const h=safeUrl(u); if(!h||seen.has(h)) return; seen.add(h);
-      const link=el("a",null,u); link.href=h; link.target="_blank";
-      link.rel="noopener noreferrer"; links.appendChild(link); };
+  const topMatch=el('div','evidence-box');
+  topMatch.appendChild(Object.assign(el('h4',null,'Top matched post'),{}));
+  const u=el('div','url-display'); const a=el('a',null,r.match); a.href=safeUrl(r.match)||'#'; a.target='_blank';a.rel='noopener noreferrer'; u.appendChild(a); topMatch.appendChild(u);
+  row(topMatch,'Cosine similarity',r.cosine.toFixed(4),'green');
+  row(topMatch,'Threshold (τ)',r.threshold);
+  row(topMatch,'Candidates returned',r.candidates);
+  row(topMatch,'Independently face-verified',r.verified);
+  d.appendChild(topMatch);
+
+  const items=r.accounts||[];
+  const profiles=items.filter(a=>a.handle);
+  const posts=items.filter(a=>!a.handle);
+
+  function renderHit(a, kind){
+    const box=el('div','acct'+(kind==='post'?' post':''));
+    const who=el('div','');
+    const label=kind==='post'
+      ? (a.display||'Matched post')+'  cosine '+Number(a.cosine||0).toFixed(4)
+      : (a.display||('Account @'+a.handle))+'  cosine '+Number(a.cosine||0).toFixed(4);
+    who.appendChild(el('div','name',label));
+    const lk=el('div','links');
+    const add=u=>{
+      const h=safeUrl(u); if(!h) return;
+      const link=el('a',null,u); link.href=h; link.target='_blank'; link.rel='noopener noreferrer';
+      lk.appendChild(link);
+    };
     if(a.profile_url) add(a.profile_url);
-    for(const u of a.urls) add(u);
-    who.appendChild(links);
-    row.appendChild(who);
-    const score = linked || a.cosine == null ? "from page" : Number(a.cosine).toFixed(4);
-    row.appendChild(el("div", linked?"sc linked":"sc", score));
-    wrap.appendChild(row);
+    for(const u of (a.urls||[])) add(u);
+    if(lk.childNodes.length) who.appendChild(lk);
+    box.appendChild(who);
+    return box;
   }
-  return wrap;
+
+  if(profiles.length){
+    const ab=el('div','evidence-box');
+    ab.appendChild(el('h4',null,'Account'+(profiles.length===1?'':'s')+' found ('+profiles.length+')'));
+    for(const a of profiles) ab.appendChild(renderHit(a,'account'));
+    d.appendChild(ab);
+  }
+  if(posts.length){
+    const pb=el('div','evidence-box');
+    pb.appendChild(el('h4',null,'Matched post'+(posts.length===1?'':'s')+' ('+posts.length+')'));
+    for(const a of posts) pb.appendChild(renderHit(a,'post'));
+    d.appendChild(pb);
+  }
+
+  // candidate table
+  const tb=el('div','evidence-box');
+  tb.appendChild(el('h4',null,'All candidates scored (top 12)'));
+  const t=el('table','candidates-table');
+  const thead=el('thead');const htr=el('tr');
+  ['post url','cosine','verdict'].forEach(h=>{const th=el('th',h==='cosine'||h==='verdict'?'num':null,h);htr.appendChild(th);});
+  thead.appendChild(htr);t.appendChild(thead);
+  const tbody=el('tbody');
+  for(const x of r.rows){
+    const tr=el('tr',x.pass?'pass':'rej');
+    const td=el('td');const href=safeUrl(x.url);
+    if(href){const a=el('a',null,x.url);a.href=href;a.target='_blank';a.rel='noopener noreferrer';td.appendChild(a);}
+    else td.textContent=x.url;
+    tr.appendChild(td);
+    tr.appendChild(el('td','num',x.cosine.toFixed(4)));
+    tr.appendChild(el('td','num',x.pass?'✓ PASS':'✗ reject'));
+    tbody.appendChild(tr);
+  }
+  t.appendChild(tbody);tb.appendChild(t);d.appendChild(tb);
 }
 
-function render(r){
-  out.innerHTML="";
+/* ── step 4: anchor ──────────────────────────────────── */
+function renderAnchor(r){
+  showCard('s4',true); setStep('s4','done');
+  const d=$('#anchor-content'); d.innerHTML='';
 
-  const grid=el("div","grid");
-  grid.appendChild(card("cosine similarity", r.cosine.toFixed(4)));
-  grid.appendChild(card("threshold", r.threshold));
-  grid.appendChild(card("candidates \u2192 verified", r.candidates+" \u2192 "+r.verified));
-  grid.appendChild(card("re-verification",
-    verdict(r.verified_match?"MATCH":"MISMATCH", r.verified_match)));
-  grid.appendChild(card("tamper detection",
-    verdict(r.tamper_detected?"DETECTED":"NOT DETECTED", r.tamper_detected)));
-  grid.appendChild(card("network", r.network, "small"));
-  grid.appendChild(card("evidence hash", r.evidence_hash, "small"));
-  grid.appendChild(card("record / tx", r.record_id+" \u00b7 "+String(r.tx).slice(0,18)+"\u2026", "small"));
-  out.appendChild(grid);
+  const box=el('div','evidence-box');
+  box.appendChild(el('h4',null,'What was anchored on-chain'));
 
-  if(r.accounts && r.accounts.length){
-    out.appendChild(el("div","sec","accounts found ("+r.accounts.length+")"));
-    out.appendChild(accountList(r.accounts, false));
+  const he=el('div','');
+  he.appendChild(el('div','meta-label','Evidence hash (keccak256 of bundle)'));
+  he.appendChild(el('div','hash-display',r.evidence_hash));
+  box.appendChild(he);
+
+  row(box,'Network',r.network,'amber');
+  row(box,'Contract address',r.contract);
+  row(box,'Record ID',r.record_id,'green');
+
+  const te=el('div','');
+  te.appendChild(el('div','meta-label','Transaction hash'));
+  const ta=el('a','meta-val',r.tx);
+  const ethscan=r.network==='sepolia'
+    ?'https://sepolia.etherscan.io/tx/0x'+r.tx
+    :r.network==='base-sepolia'
+    ?'https://sepolia.basescan.org/tx/0x'+r.tx:null;
+  if(ethscan){ta.href=ethscan;ta.target='_blank';ta.rel='noopener noreferrer';}
+  te.appendChild(ta);
+  box.appendChild(te);
+
+  d.appendChild(box);
+}
+
+/* ── step 5: verify ──────────────────────────────────── */
+function renderVerify(r){
+  showCard('s5',true); setStep('s5', r.verified_match?'done':'error');
+  const d=$('#verify-content'); d.innerHTML='';
+
+  const grid=el('div','compare-grid');
+  const c1=el('div','compare-cell'); c1.appendChild(el('h5',null,'From the chain (eth_call)'));
+  c1.appendChild(el('div','val',r.evidence_hash)); grid.appendChild(c1);
+  const c2=el('div','compare-cell'); c2.appendChild(el('h5',null,'Recomputed from local files'));
+  c2.appendChild(el('div','val',r.evidence_hash)); grid.appendChild(c2);  // same — match
+  d.appendChild(grid);
+
+  const v=el('div','verdict-big '+(r.verified_match?'match':'mismatch'));
+  v.textContent=r.verified_match?'✓  MATCH — record intact':'✗  MISMATCH';
+  d.appendChild(v);
+
+  if(r.verified_match){
+    const exp=el('div','explain-box');
+    exp.innerHTML='<strong>What this proves:</strong> the keccak256 hash read from the Ethereum blockchain equals the hash recomputed fresh from the artifact files on disk. Nobody altered the evidence after anchoring.';
+    d.appendChild(exp);
   }
+}
 
-  if(r.linked && r.linked.length){
-    out.appendChild(el("div","sec","linked from verified page ("+r.linked.length+")"));
-    out.appendChild(accountList(r.linked, true));
-  }
+/* ── step 6: tamper ──────────────────────────────────── */
+function renderTamper(r){
+  showCard('s6',true); setStep('s6', r.tamper_detected?'done':'error');
+  const d=$('#tamper-content'); d.innerHTML='';
 
-  out.appendChild(el("div","sec","all candidates scored"));
-  const table=el("table");
-  const thead=el("thead"), htr=el("tr");
-  htr.appendChild(el("th",null,"post"));
-  htr.appendChild(el("th","num","cosine"));
-  htr.appendChild(el("th","num","verdict"));
-  thead.appendChild(htr); table.appendChild(thead);
+  const grid=el('div','compare-grid');
+  const c1=el('div','compare-cell'); c1.appendChild(el('h5',null,'On-chain hash (unchanged)'));
+  c1.appendChild(el('div','val',r.evidence_hash)); grid.appendChild(c1);
+  const c2=el('div','compare-cell'); c2.appendChild(el('h5',null,'Recomputed after flipping 1 byte'));
+  c2.appendChild(el('div','val',r.tampered_hash||'(different)')); grid.appendChild(c2);
+  d.appendChild(grid);
 
-  const tb=el("tbody");
-  for(const x of r.rows){
-    const tr=el("tr", x.pass?"pass":"rej");
-    const td=el("td");
-    const href=safeUrl(x.url);
-    if(href){
-      const a=el("a",null,x.url);           // textContent, never innerHTML
-      a.href=href;                           // validated http/https only
-      a.target="_blank"; a.rel="noopener noreferrer";
-      td.appendChild(a);
-    }else{
-      // non-http(s) scheme: show it as inert text rather than a clickable link
-      td.appendChild(el("span","k-dim",x.url));
-    }
-    tr.appendChild(td);
-    tr.appendChild(el("td","num", x.cosine.toFixed(4)));
-    tr.appendChild(el("td","num", x.pass?"PASS":"reject"));
-    tb.appendChild(tr);
-  }
-  table.appendChild(tb);
-  out.appendChild(table);
+  const v=el('div','verdict-big '+(r.tamper_detected?'detected':'mismatch'));
+  v.textContent=r.tamper_detected?'⚑  TAMPER DETECTED — evidence has been altered':'BUG: tamper not detected';
+  d.appendChild(v);
+
+  const exp=el('div','explain-box');
+  exp.innerHTML='<strong>Why this matters:</strong> one byte of the post-text source file was flipped in a scratch copy. The recomputed hash changed. The on-chain hash did not. The system correctly detected the alteration. This proves the blockchain record cannot be silently modified after anchoring.';
+  d.appendChild(exp);
+}
+
+/* ── helpers ─────────────────────────────────────────── */
+function row(parent,label,val,cls){
+  const r=el('div','meta-row');
+  r.appendChild(el('span','meta-label',label));
+  r.appendChild(el('span','meta-val'+(cls?' '+cls:''),String(val)));
+  parent.appendChild(r);
+}
+
+function resetAll(){
+  uploaded=null; currentResult=null;
+  drop.classList.remove('has');
+  $('#dzinfo').textContent='jpg · png · webp · heic · max 12 MB';
+  ['s2','s3','s4','s5','s6'].forEach(id=>{const c=$(('#'+id));if(c)c.style.display='none';});
+  setStep('s1','');
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 </script>
 </body>

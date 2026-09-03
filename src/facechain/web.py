@@ -286,6 +286,7 @@ def _run_job(job: Job, payload: dict) -> None:
             "resolved_profile": result.resolved_profile,
             "linked": [_account_json(a) for a in linked],
             "evidence_hash": "0x" + h.hex(),
+            "tampered_hash": "0x" + bad.recomputed_hash.hex(),
             "record_id": rid,
             "tx": tx,
             "network": cfg.network,

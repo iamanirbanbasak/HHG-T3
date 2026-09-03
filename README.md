@@ -171,7 +171,8 @@ cosine-scored against the probe by this pipeline. The provider proposes; the emb
 
 - `--network local` — an in-process `eth-tester` chain. No RPC, no binary, no network. Used for
   development and the full test suite.
-- `--network base-sepolia` — public testnet. Free faucet, ~2s blocks, Basescan explorer.
+- `--network sepolia` — Ethereum Sepolia. Set `RPC_URL=https://sepolia.infura.io/v3/<PROJECT_ID>`.
+- `--network base-sepolia` — Base Sepolia. Free faucet, ~2s blocks, Basescan explorer.
 
 `FaceMatchRegistry` is deliberately minimal and **append-only**: no update path, no delete path,
 no owner, no upgradeability. Mutability would defeat the purpose of the record. `postUrl` is

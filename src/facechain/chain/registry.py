@@ -64,7 +64,7 @@ class Registry:
                         {"hint": "set PRIVATE_KEY in .env for any network other than 'local'"},
                     )
                 tx_hash = fn.transact({"from": node_accounts[0]})
-            receipt = self._w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = self._w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
         except ChainError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -81,12 +81,15 @@ class Registry:
     def _send_signed(self, fn, account):
         """Build, sign locally, and send a raw transaction."""
         w3 = self._w3
+        # Add a 20 % tip over the suggested gas price so the tx gets picked up
+        # promptly on public testnets where the base fee can spike briefly.
+        gas_price = int(w3.eth.gas_price * 1.2)
         tx = fn.build_transaction({
             "from": account.address,
             "nonce": w3.eth.get_transaction_count(account.address),
             "chainId": w3.eth.chain_id,
             "gas": 400_000,
-            "gasPrice": w3.eth.gas_price,
+            "gasPrice": gas_price,
         })
         signed = account.sign_transaction(tx)
         # web3 v6 exposes rawTransaction; v7 renamed it raw_transaction.

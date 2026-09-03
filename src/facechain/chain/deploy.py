@@ -52,14 +52,15 @@ def deploy(w3, cfg: Config) -> str:
                 {
                     "from": acct.address,
                     "nonce": w3.eth.get_transaction_count(acct.address),
+                    "chainId": w3.eth.chain_id,
                     "gas": 1_200_000,
-                    "gasPrice": w3.eth.gas_price,
+                    "gasPrice": int(w3.eth.gas_price * 1.2),
                 }
             )
             signed = acct.sign_transaction(tx)
             raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
             tx_hash = w3.eth.send_raw_transaction(raw)
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt = w3.eth.wait_for_transaction_receipt(tx_hash, timeout=300)
     except ChainError:
         raise
     except Exception as exc:  # noqa: BLE001

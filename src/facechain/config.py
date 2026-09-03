@@ -13,7 +13,12 @@ from typing import Literal
 
 from .errors import FaceChainError
 
-Network = Literal["local", "base-sepolia"]
+Network = Literal["local", "base-sepolia", "sepolia"]
+NETWORKS: tuple[str, ...] = ("local", "base-sepolia", "sepolia")
+NETWORK_ALIASES = {
+    "eth-sepolia": "sepolia",
+    "ethereum-sepolia": "sepolia",
+}
 SearchProvider = Literal["google_lens", "facecheck", "yandex"]
 
 # Tried in order until one yields a verified match. Google Lens first: it is API-backed, fastest
@@ -62,7 +67,10 @@ DEFAULT_PROFILE_DOMAINS: tuple[str, ...] = (
     "goodreads.com", "pinterest.com", "thoughtleaders.io",
 )
 
-DEFAULT_RPC_URLS: dict[str, str] = {"base-sepolia": "https://sepolia.base.org"}
+DEFAULT_RPC_URLS: dict[str, str] = {
+    "base-sepolia": "https://sepolia.base.org",
+    "sepolia": "https://rpc.sepolia.org",
+}
 
 
 class _Secret(str):
@@ -120,20 +128,49 @@ def _secret(value: str | None) -> str | None:
     return _Secret(value) if value else None
 
 
+def _network_name(raw: object) -> str:
+    n = str(raw or "").strip().lower().replace("_", "-")
+    return NETWORK_ALIASES.get(n, n)
+
+
+def _rpc_url(raw: str | None, network: str) -> str | None:
+    """Turn a host or Infura shortcut into an HTTP RPC URL."""
+    url = (raw or "").strip() or DEFAULT_RPC_URLS.get(network)
+    if not url:
+        return None
+    if "://" not in url:
+        url = "https://" + url
+    if "infura.io" in url and "/v3/" not in url:
+        key = (
+            os.environ.get("INFURA_KEY")
+            or os.environ.get("INFURA_API_KEY")
+            or os.environ.get("INFURA_PROJECT_ID")
+            or ""
+        ).strip()
+        if key:
+            url = url.rstrip("/") + "/v3/" + key
+        elif network != "local":
+            raise FaceChainError(
+                "Infura RPC_URL needs a project id",
+                {"hint": "set RPC_URL=https://sepolia.infura.io/v3/<PROJECT_ID> or INFURA_KEY"},
+            )
+    return url
+
+
 def load_config(**overrides: object) -> Config:
     """Build a Config from the environment, then apply non-None overrides.
 
     Overrides beat the environment so CLI flags always win.
     """
-    network = str(overrides.pop("network", None) or os.environ.get("NETWORK") or "local")
-    if network not in ("local", "base-sepolia"):
+    network = _network_name(overrides.pop("network", None) or os.environ.get("NETWORK") or "local")
+    if network not in NETWORKS:
         raise FaceChainError(
-            f"unknown network: {network!r}", {"valid": "local, base-sepolia"}
+            f"unknown network: {network!r}", {"valid": ", ".join(NETWORKS)}
         )
 
     cfg = Config(
         network=network,  # type: ignore[arg-type]
-        rpc_url=os.environ.get("RPC_URL") or DEFAULT_RPC_URLS.get(network),
+        rpc_url=_rpc_url(os.environ.get("RPC_URL"), network),
         private_key=_secret(os.environ.get("PRIVATE_KEY")),
         contract_address=os.environ.get("CONTRACT_ADDRESS"),
         serpapi_key=_secret(os.environ.get("SERPAPI_KEY")),

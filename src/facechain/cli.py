@@ -31,7 +31,7 @@ from .errors import (
 )
 
 app = typer.Typer(add_completion=False, help="Face scan -> social match -> on-chain evidence.")
-console = Console()
+console = Console(highlight=False)
 
 EXIT_OK, EXIT_MISMATCH, EXIT_NO_FACE = 0, 1, 2
 EXIT_PROVIDER, EXIT_NO_MATCH, EXIT_CHAIN = 3, 4, 5
@@ -542,6 +542,12 @@ def main() -> None:  # pragma: no cover
     Every exception is caught for the same reason: one that escapes would reach normal
     interpreter shutdown and bypass os._exit entirely, which is precisely the case this guards.
     """
+    # Windows terminals default to cp1252; Unicode URLs and non-ASCII content crash the renderer.
+    if sys.platform == "win32":
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
     from .face.models import _silence_upstream_warnings
 

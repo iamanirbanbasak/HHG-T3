@@ -41,6 +41,9 @@ resolution-markers = [
     "(python_full_version < '3.12' and implementation_name != 'cpython' and implementation_name != 'pypy' and platform_machine != 'aarch64' and sys_platform == 'linux') or (python_full_version < '3.12' and implementation_name != 'cpython' and implementation_name != 'pypy' and sys_platform != 'darwin' and sys_platform != 'linux')",
 ]
 
+[manifest]
+overrides = [{ name = "safe-pysha3", marker = "sys_platform == 'never'" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
@@ -1010,7 +1013,7 @@ pycryptodome = [
     { name = "pycryptodome" },
 ]
 pysha3 = [
-    { name = "safe-pysha3" },
+    { name = "safe-pysha3", marker = "sys_platform == 'never'" },
 ]
 
 [[package]]
@@ -1123,6 +1126,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pillow-heif" },
     { name = "py-solc-x" },
+    { name = "pycryptodome" },
     { name = "python-multipart" },
     { name = "rich" },
     { name = "typer" },
@@ -1152,6 +1156,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "pillow-heif", specifier = ">=0.16" },
     { name = "py-solc-x", specifier = ">=2.0" },
+    { name = "pycryptodome", specifier = ">=3.20" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
@@ -3202,14 +3207,6 @@ name = "safe-pysha3"
 version = "1.0.5"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a4/27/a942b8a95b97c5fb8d27d3b86b8d269546cf21f87d9ec6b44c3702ce67cc/safe_pysha3-1.0.5.tar.gz", hash = "sha256:88ceaad6af4b6bdecd2f54b31ad0e5e5e210d4f5ecabb1bd1fd3539ad61b7bf1", size = 827796, upload-time = "2025-06-19T13:55:04.106Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fc/80/60f78a39693d5d38440d1e71f117f0131d668bfa42988ba23bcdd45f66ac/safe_pysha3-1.0.5-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4505f4b3ce327a8b02299e48b55c32094ed15c63f83e8d9477ebe91e8777fc8f", size = 190198, upload-time = "2025-06-20T15:19:18.436Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/ad/30e8abf4535b0ed4f36eea451534f61adb1012226d7a36c1e1ed970717f0/safe_pysha3-1.0.5-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:4048005b764861f36eed98a83fb04268c972b6100fe530303999ff6fce744e64", size = 184239, upload-time = "2025-06-20T15:19:19.786Z" },
-    { url = "https://files.pythonhosted.org/packages/bd/59/8d7f64a3eb6ebbde248cc0347a67d7825e2ba6edfa2bd180ebdfb599b3c5/safe_pysha3-1.0.5-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d137a73029c6c5a1db5791ae9fa62373827eee5226d19b79b836a6cf48b6b197", size = 190427, upload-time = "2025-06-20T15:19:20.862Z" },
-    { url = "https://files.pythonhosted.org/packages/da/6a/25e926ab9c8d714be2ee1d40f45eb425f438c968d97ede69a7cbff054094/safe_pysha3-1.0.5-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:9a0cb37252a8767992f354d7d2af2ef04730032927eb6af2057e71744c741287", size = 184478, upload-time = "2025-06-20T15:19:22.289Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/da/7e1f252e6984f4b82393e4e083d3a48806e8a7225651559e50dec0000c68/safe_pysha3-1.0.5-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2019065f1b7d3db37cc52d091c9d5526d5d36a3e1b9efcf0b345c24e03755bff", size = 190543, upload-time = "2025-06-20T15:19:23.426Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/a6/e134e353a4961090caf4f429044b845584fe11d2217960a2549943ef01ea/safe_pysha3-1.0.5-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:fa37d5d6138d5dd01d1035dba019b7525ad7c55669ded4524f589cddd13ea13b", size = 367223, upload-time = "2025-06-20T15:19:24.453Z" },
-]
 
 [[package]]
 name = "scikit-image"

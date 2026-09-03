@@ -37,6 +37,32 @@ class TestOverrides:
         with pytest.raises(FaceChainError):
             load_config(network="mainnet")
 
+    def test_ethereum_sepolia_is_a_network(self, monkeypatch):
+        monkeypatch.delenv("RPC_URL", raising=False)
+        assert load_config(network="sepolia").network == "sepolia"
+        assert load_config(network="SEPOLIA").network == "sepolia"
+        assert load_config(network="eth-sepolia").network == "sepolia"
+
+    def test_sepolia_default_rpc_is_ethereum_not_base(self, monkeypatch):
+        monkeypatch.delenv("RPC_URL", raising=False)
+        cfg = load_config(network="sepolia")
+        assert cfg.rpc_url == "https://rpc.sepolia.org"
+        assert "base.org" not in (cfg.rpc_url or "")
+
+    def test_infura_host_gets_https_and_project_id(self, monkeypatch):
+        monkeypatch.setenv("RPC_URL", "sepolia.infura.io")
+        monkeypatch.setenv("INFURA_KEY", "abc123")
+        cfg = load_config(network="sepolia")
+        assert cfg.rpc_url == "https://sepolia.infura.io/v3/abc123"
+
+    def test_infura_without_project_id_raises(self, monkeypatch):
+        monkeypatch.setenv("RPC_URL", "sepolia.infura.io")
+        monkeypatch.delenv("INFURA_KEY", raising=False)
+        monkeypatch.delenv("INFURA_API_KEY", raising=False)
+        monkeypatch.delenv("INFURA_PROJECT_ID", raising=False)
+        with pytest.raises(FaceChainError, match="Infura"):
+            load_config(network="sepolia")
+
 
 class TestRequire:
     def test_missing_required_field_raises_typed_error(self):
