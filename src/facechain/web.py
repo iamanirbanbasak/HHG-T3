@@ -58,6 +58,25 @@ def _looks_like_image(head: bytes) -> bool:
     return len(head) > 12 and head[4:8] == b"ftyp"
 
 
+def safe_run_dir(raw: str) -> Path:
+    """Resolve a run directory, confined to the artifacts tree.
+
+    Same reasoning as safe_image_path: the server is reachable by any local process and any page
+    in the browser, so a caller-supplied path is untrusted regardless of the localhost bind.
+    """
+    if not raw:
+        raise FaceChainError("no run directory given")
+    resolved = (PROJECT_ROOT / Path(raw)).resolve()
+    artifacts = (PROJECT_ROOT / "artifacts").resolve()
+    try:
+        resolved.relative_to(artifacts)
+    except ValueError:
+        raise FaceChainError("run directory must be inside artifacts/") from None
+    if not resolved.is_dir():
+        raise FaceChainError("run directory not found", {"path": raw})
+    return resolved
+
+
 def safe_image_path(raw: str) -> Path:
     """Resolve a user-supplied image path, confined to the project directory.
 
@@ -122,7 +141,10 @@ def _cfg(payload: dict) -> Config:
 
     _load_dotenv()
     return load_config(
-        network=payload.get("network") or "local",
+        # Fall through to NETWORK in .env rather than forcing "local". Hardcoding the fallback
+        # meant a configured testnet was silently ignored and runs anchored to a throwaway
+        # in-process chain while the UI displayed the real contract address.
+        network=payload.get("network") or None,
         threshold=payload.get("threshold"),
         search_provider=payload.get("provider") or None,
     )
@@ -263,15 +285,7 @@ def _run_job(job: Job, payload: dict) -> None:
         job.log(f"recomputed  0x{ok.recomputed_hash.hex()}", "hash")
         job.log("MATCH  record intact" if ok.matches else "MISMATCH", "ok" if ok.matches else "err")
 
-        job.log("tamper demonstration: flipping one byte of source evidence...", "step")
-        bad = verify_record(reg, rid, result.run_dir, cfg, tamper=True)
-        job.log(f"on-chain    0x{bad.onchain_hash.hex()}", "hash")
-        job.log(f"recomputed  0x{bad.recomputed_hash.hex()}", "hash")
-        job.log(
-            "MISMATCH  evidence has been altered" if not bad.matches
-            else "TAMPER NOT DETECTED - BUG",
-            "err",
-        )
+        job.log("evidence intact. tamper test is available on demand.", "dim")
 
         job.result = {
             "match": result.top.candidate.page_url,
@@ -286,7 +300,6 @@ def _run_job(job: Job, payload: dict) -> None:
             "resolved_profile": result.resolved_profile,
             "linked": [_account_json(a) for a in linked],
             "evidence_hash": "0x" + h.hex(),
-            "tampered_hash": "0x" + bad.recomputed_hash.hex(),
             "record_id": rid,
             "tx": tx,
             "network": cfg.network,
@@ -295,7 +308,6 @@ def _run_job(job: Job, payload: dict) -> None:
             "contract": reg.address,
             "run_dir": str(result.run_dir),
             "verified_match": ok.matches,
-            "tamper_detected": not bad.matches,
         }
         job.ok = True
 
@@ -406,6 +418,57 @@ def create_app():
             _jobs[job.id] = job
         threading.Thread(target=_run_job, args=(job, payload), daemon=True).start()
         return {"job": job.id}
+
+    @app.post("/api/tamper")
+    async def tamper(request: Request, payload: dict, x_csrf_token: str = Header(default="")):
+        """Run the tamper test on an existing anchored record, on request.
+
+        Deliberately not part of /api/run. Flipping a byte of evidence is the one destructive-
+        looking thing this tool does, and an operator should decide when it happens rather than
+        watch it occur unprompted. The mutation still lands on a scratch copy -- the originals are
+        never touched -- but the *decision* is now theirs.
+        """
+        _check_origin(request)
+        if not secrets.compare_digest(x_csrf_token, CSRF_TOKEN):
+            raise HTTPException(status_code=403, detail="missing or invalid CSRF token")
+
+        from .chain.compile import compile_registry
+        from .chain.deploy import make_web3, signing_account
+        from .chain.registry import Registry
+        from .evidence import sha256_file
+        from .verify import verify_record
+
+        try:
+            cfg = _cfg(payload)
+            run_dir = safe_run_dir(str(payload.get("run_dir") or ""))
+            record_id = int(payload.get("record_id"))
+
+            before = {p.name: sha256_file(p) for p in sorted(run_dir.iterdir()) if p.is_file()}
+
+            cfg.require("contract_address")
+            w3 = make_web3(cfg)
+            abi, _ = compile_registry()
+            reg = Registry(w3, cfg.contract_address, list(abi),
+                           account=signing_account(w3, cfg))
+
+            intact = verify_record(reg, record_id, run_dir, cfg)
+            bad = verify_record(reg, record_id, run_dir, cfg, tamper=True)
+
+            after = {p.name: sha256_file(p) for p in sorted(run_dir.iterdir()) if p.is_file()}
+        except FaceChainError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="record_id must be an integer") from exc
+
+        return {
+            "onchain_hash": "0x" + bad.onchain_hash.hex(),
+            "intact_hash": "0x" + intact.recomputed_hash.hex(),
+            "tampered_hash": "0x" + bad.recomputed_hash.hex(),
+            "detected": not bad.matches,
+            # Proof the demonstration did not damage the real evidence.
+            "originals_unchanged": before == after,
+            "mutated_file": "post_text.txt",
+        }
 
     @app.get("/api/job/{job_id}")
     def status(job_id: str):

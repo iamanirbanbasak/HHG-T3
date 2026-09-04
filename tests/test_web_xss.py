@@ -76,7 +76,7 @@ def test_urls_pass_through_scheme_validation():
     # variable whose declaration calls it. Names differ across call sites, so match on the binding
     # rather than on a fixed identifier.
     validated = set(
-        re.findall(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*safeUrl", CODE)
+        re.findall(r"([A-Za-z_$][\w$]*)\s*=\s*safeUrl\s*\(", CODE)
     )
     unchecked = []
     for expr in re.findall(r"\.href\s*=\s*([^;\n]+)", CODE):

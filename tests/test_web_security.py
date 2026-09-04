@@ -140,3 +140,94 @@ class TestConfigEndpoint:
 
     def test_unknown_job_returns_404_not_500(self, client):
         assert client.get("/api/job/deadbeef").status_code == 404
+
+
+class TestTamperIsOperatorTriggered:
+    """The tamper test must not run on its own.
+
+    Flipping a byte of evidence is the one destructive-looking thing this tool does. It used to
+    happen automatically at the end of every run, which meant an operator watched their evidence
+    get altered without asking. It is now a separate, explicit request.
+    """
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from facechain.web import create_app
+
+        return TestClient(create_app())
+
+    def test_run_no_longer_performs_the_tamper_test(self):
+        """The run path must not reference tamper=True anywhere."""
+        src = (Path(__file__).resolve().parents[1]
+               / "src" / "facechain" / "web.py").read_text()
+        run_body = src[src.index("def _run_job"):src.index("def create_app")]
+        assert "tamper=True" not in run_body
+
+    def test_tamper_endpoint_requires_csrf(self, client):
+        r = client.post("/api/tamper", json={"run_dir": "artifacts/x", "record_id": 0})
+        assert r.status_code == 403
+
+    def test_tamper_endpoint_rejects_cross_origin(self, client):
+        r = client.post("/api/tamper", json={"run_dir": "artifacts/x", "record_id": 0},
+                        headers={"x-csrf-token": CSRF_TOKEN,
+                                 "origin": "https://evil.example.com"})
+        assert r.status_code == 403
+
+    @pytest.mark.parametrize("path", ["/etc", "../../etc", "/tmp", "uploads"])
+    def test_run_dir_confined_to_artifacts(self, path):
+        from facechain.web import safe_run_dir
+
+        with pytest.raises(FaceChainError):
+            safe_run_dir(path)
+
+    def test_missing_run_dir_rejected(self):
+        from facechain.web import safe_run_dir
+
+        with pytest.raises(FaceChainError):
+            safe_run_dir("artifacts/does-not-exist")
+
+    def test_empty_run_dir_rejected(self):
+        from facechain.web import safe_run_dir
+
+        with pytest.raises(FaceChainError):
+            safe_run_dir("")
+
+    def test_bad_record_id_is_a_400_not_a_500(self, client):
+        r = client.post("/api/tamper",
+                        json={"run_dir": "artifacts", "record_id": "not-an-int"},
+                        headers={"x-csrf-token": CSRF_TOKEN})
+        assert r.status_code == 400
+
+
+class TestNetworkDefault:
+    """Regression: the web layer forced network="local", so a configured testnet in .env was
+    ignored and runs anchored to a throwaway in-process chain while the UI showed the real
+    contract address."""
+
+    def test_configured_network_is_respected(self, monkeypatch):
+        from facechain.web import _cfg
+
+        monkeypatch.setenv("NETWORK", "sepolia")
+        assert _cfg({}).network == "sepolia"
+
+    def test_explicit_request_network_still_wins(self, monkeypatch):
+        from facechain.web import _cfg
+
+        monkeypatch.setenv("NETWORK", "sepolia")
+        assert _cfg({"network": "local"}).network == "local"
+
+    def test_defaults_to_local_when_nothing_configured(self, monkeypatch):
+        """With no request value and no environment value, local is the fallback.
+
+        _cfg loads .env, which sets NETWORK, so the loader is stubbed out here -- otherwise the
+        test asserts against the developer's own configuration rather than the default.
+        """
+        import facechain.cli
+        from facechain.web import _cfg
+
+        # _cfg imports _load_dotenv from facechain.cli at call time, so patch it at the source.
+        monkeypatch.setattr(facechain.cli, "_load_dotenv", lambda: None)
+        monkeypatch.delenv("NETWORK", raising=False)
+        assert _cfg({}).network == "local"
