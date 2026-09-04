@@ -158,6 +158,19 @@ class TestUnionAndFilter:
         cands = [candidate("https://notinstagram.com.evil.co/p/AAA/")]
         assert filter_social(cands, cfg) == []
 
+    def test_instagram_post_survives_a_linkedin_flood(self, cfg):
+        """Lens often ranks similar LinkedIn faces above the actual Instagram post."""
+        from facechain.config import Config
+
+        cfg = Config(max_candidates=5)
+        cands = [
+            candidate(f"https://www.linkedin.com/in/lookalike-{i}")
+            for i in range(12)
+        ] + [candidate("https://www.instagram.com/p/DcG3rbAFFA3/")]
+        kept = [c.page_url for c in filter_social(cands, cfg)]
+        assert "https://www.instagram.com/p/DcG3rbAFFA3/" in kept
+        assert kept[0].endswith("/p/DcG3rbAFFA3/")
+
 
 class TestThumbnailFallback:
     def test_falls_back_to_thumbnail_when_the_original_is_refused(self, tmp_path, cfg):

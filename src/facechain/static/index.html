@@ -223,6 +223,25 @@ button.break.breaking{animation:shake .4s ease}
 }
 .explain strong{color:var(--fg)}
 
+.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px}
+.gallery figure{margin:0}
+.gallery img{width:100%;height:140px;object-fit:cover;border-radius:5px;border:1px solid var(--line);background:var(--bg)}
+.gallery figcaption{color:var(--dim);font-size:10px;letter-spacing:.11em;text-transform:uppercase;margin-top:6px}
+textarea.edit{
+  width:100%;min-height:130px;background:var(--bg);color:var(--fg);
+  border:1px solid var(--line-hi);font:12px var(--mono);padding:9px;border-radius:5px;resize:vertical;
+}
+textarea.json-edit{min-height:280px;color:var(--data);font-size:11px;line-height:1.5}
+pre.json{
+  max-height:260px;overflow:auto;background:var(--bg);border:1px solid var(--line);
+  border-radius:5px;padding:10px 12px;font-size:11px;line-height:1.5;color:var(--data);
+  white-space:pre-wrap;word-break:break-word;margin:0;
+}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button.wallet{color:var(--data);border-color:var(--data)}
+button.wallet:hover:not(:disabled){background:var(--data);color:#1a1206}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px;margin-top:10px}
+.thumbs img{width:100%;height:72px;object-fit:cover;border-radius:4px;border:1px solid var(--line);background:var(--bg)}
 footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);
   color:var(--dim);font-size:11px;line-height:1.75}
 footer strong{color:var(--fg)}
@@ -279,7 +298,11 @@ footer strong{color:var(--fg)}
     <div class="field"><label for="tau">Threshold</label>
       <input type="number" id="tau" value="0.45" step="0.01" min="0" max="1" style="width:78px">
     </div>
+    <div class="field"><label for="runpick">Saved run</label>
+      <select id="runpick" style="min-width:210px"><option value="">— new scan —</option></select>
+    </div>
     <div class="grow"></div>
+    <button id="loadrun" class="ghost" type="button">Open run</button>
     <button id="go">Run scan</button>
     <button id="reset" class="ghost">Reset</button>
   </div>
@@ -355,15 +378,96 @@ function kv(pairs){
   return d;
 }
 function hashEl(h){return el('div','hash',h);}
+function as0x(h){
+  h=String(h||'');
+  return (!h||h.startsWith('0x')||h.startsWith('0X'))?h:'0x'+h;
+}
+function shortAddr(a){
+  a=String(a||'');
+  return a.length>12?a.slice(0,6)+'\u2026'+a.slice(-4):a;
+}
+function artifactUrl(runDir,name){
+  return '/api/artifact/'+String(name).split('/').map(encodeURIComponent).join('/')
+    +'?run_dir='+encodeURIComponent(runDir);
+}
+function apiDetail(j,status){
+  const d=j&&j.detail;
+  if(typeof d==='string') return d;
+  if(d==null) return String(status);
+  try{return JSON.stringify(d);}catch(e){return String(status);}
+}
+async function apiPost(path,body){
+  const resp=await fetch(path,{
+    method:'POST',
+    headers:{'content-type':'application/json','x-csrf-token':csrfToken()},
+    body:JSON.stringify(body)
+  });
+  const j=await resp.json().catch(()=>({}));
+  if(!resp.ok) throw new Error(apiDetail(j,resp.status));
+  return j;
+}
+function rerender(keepDrafts){
+  if(keepDrafts!==false && lastRun){
+    const ev=$('#evidence-json'), pt=$('#post-text');
+    if(ev) lastRun._draftEvidence=ev.value;
+    if(pt) lastRun._draftPost=pt.value;
+  }
+  $('#out').textContent='';
+  if(lastRun) render(lastRun);
+}
+function evidenceForEditor(ev){
+  try{
+    const o=JSON.parse(JSON.stringify(ev));
+    if(o.probe) delete o.probe.image_sha256;
+    if(o.match){delete o.match.image_sha256; delete o.match.post_text_sha256;}
+    return JSON.stringify(o,null,2);
+  }catch(e){return JSON.stringify(ev,null,2);}
+}
+
+const CHAIN_PARAMS={
+  11155111:{
+    chainId:'0xaa36a7', chainName:'Sepolia',
+    nativeCurrency:{name:'SepoliaETH',symbol:'ETH',decimals:18},
+    rpcUrls:['https://rpc.sepolia.org'],
+    blockExplorerUrls:['https://sepolia.etherscan.io']
+  },
+  84532:{
+    chainId:'0x14a34', chainName:'Base Sepolia',
+    nativeCurrency:{name:'ETH',symbol:'ETH',decimals:18},
+    rpcUrls:['https://sepolia.base.org'],
+    blockExplorerUrls:['https://sepolia.basescan.org']
+  }
+};
+const IMAGE_LABELS={
+  'probe.jpg':'Probe','probe_head.png':'Head crop',
+  'probe_aligned.png':'Aligned','candidate.jpg':'Match image'
+};
 
 /* ── config ───────────────────────────────────────────────────────────── */
 fetch('/api/config').then(r=>r.json()).then(c=>{
   $('#provider').value=c.provider; $('#network').value=c.network; $('#tau').value=c.threshold;
   const bar=$('#netbar'); bar.textContent='';
   bar.appendChild(el('span','pill net',c.network));
+  if(c.chain_id) bar.appendChild(el('span','pill net','chain '+c.chain_id));
   for(const [n,ok] of [['serpapi',c.has_serpapi],['imgbb',c.has_imgbb],['facecheck',c.has_facecheck]])
     bar.appendChild(el('span','pill '+(ok?'on':'off'),n));
+  if(window.ethereum) bar.appendChild(el('span','pill on','metamask'));
+  else bar.appendChild(el('span','pill off','metamask'));
 }).catch(()=>{});
+refreshRuns();
+async function refreshRuns(){
+  const sel=$('#runpick');
+  if(!sel) return;
+  let data; try{data=await(await fetch('/api/runs')).json();}catch(e){return;}
+  const keep=sel.value;
+  sel.textContent='';
+  sel.appendChild(new Option('\u2014 new scan \u2014',''));
+  for(const x of data.runs||[]){
+    const rec=x.anchored?' \u00b7 rec '+(x.record_id??'?'):' \u00b7 not anchored';
+    sel.appendChild(new Option(x.run_dir.replace(/^artifacts\//,'')+rec, x.run_dir));
+  }
+  if(keep) sel.value=keep;
+}
 
 /* ── input ────────────────────────────────────────────────────────────── */
 function syncInput(){$('#drop').style.display=$('#src').value==='upload'?'':'none';}
@@ -393,6 +497,24 @@ async function sendFile(f){
 $('#reset').onclick=()=>{
   $('#out').textContent=''; $('#term').textContent=''; railReset(); lastRun=null;
   line('Ready. Upload a photo and press Run scan.','dim');
+};
+
+$('#loadrun').onclick=async()=>{
+  const d=$('#runpick').value;
+  if(!d){line('Pick a saved run first.','warn');return;}
+  $('#out').textContent=''; $('#term').textContent=''; railReset(); lastRun=null;
+  line('opening '+d,'step');
+  try{
+    const resp=await fetch('/api/load?run_dir='+encodeURIComponent(d)
+      +'&network='+encodeURIComponent($('#network').value));
+    const r=await resp.json();
+    if(!resp.ok){line('Could not open run: '+apiDetail(r,resp.status),'err');return;}
+    lastRun=r;
+    if(r.network) $('#network').value=r.network;
+    line('loaded '+r.run_dir+(r.awaiting_anchor?' \u2014 not yet anchored':' \u2014 record '+r.record_id),'ok');
+    line('evidence hash  '+r.evidence_hash,'hash');
+    render(r);
+  }catch(e){line('Could not open run: '+e,'err');}
 };
 
 /* ── run ──────────────────────────────────────────────────────────────── */
@@ -440,20 +562,33 @@ function advanceRail(text,kind){
   else if(t.includes('candidates')&&t.includes('social')){rail('scan','done');rail('search','active');}
   else if(t.includes('independently embedded')){rail('search','done');rail('verify','active');}
   else if(t.includes('matched via')){rail('verify','done');rail('hash','active');}
+  else if(t.includes('sealed locally')){rail('hash','done');rail('anchor','armed');}
   else if(t.includes('anchoring evidence')){rail('hash','done');rail('anchor','active');}
-  else if(t.startsWith('anchored')){rail('anchor','done');rail('recheck','active');}
+  else if(t.startsWith('anchored')){rail('anchor','done');rail('recheck','armed');}
   else if(t.includes('match  record intact')||t.includes('evidence intact')) rail('recheck','done');
   if(kind==='err'){document.querySelectorAll('.node.active').forEach(n=>n.className='node bad');}
 }
 function markFailed(){document.querySelectorAll('.node.active').forEach(n=>n.className='node bad');}
 
 /* ── render ───────────────────────────────────────────────────────────── */
+function applyRail(r){
+  rail('scan','done'); rail('search','done'); rail('verify','done'); rail('hash','done');
+  if(r.awaiting_anchor){rail('anchor','armed');rail('recheck','');}
+  else{
+    rail('anchor','done');
+    if(r.verified_match===true) rail('recheck','done');
+    else if(r.verified_match===false) rail('recheck','bad');
+    else rail('recheck','armed');
+  }
+}
+
 function render(r){
-  /* match */
+  applyRail(r);
+
   const b=card('c-match','Verified match','ok');
-  b.appendChild(el('div','big',r.cosine.toFixed(4)));
-  b.appendChild(el('div','k-dim','cosine similarity · threshold '+r.threshold
-    +' · matched via '+r.provider));
+  b.appendChild(el('div','big',Number(r.cosine||0).toFixed(4)));
+  b.appendChild(el('div','k-dim','cosine similarity \u00b7 threshold '+r.threshold
+    +' \u00b7 matched via '+(r.provider||'\u2014')));
   const mu=safeUrl(r.match);
   if(mu){const a=el('a',null,r.match);a.href=mu;a.target='_blank';a.rel='noopener noreferrer';
     const p=el('div');p.style.marginTop='9px';p.appendChild(a);b.appendChild(p);}
@@ -467,80 +602,375 @@ function render(r){
       const add=u=>{const h=safeUrl(u);if(!h||seen.has(h))return;seen.add(h);
         const l=el('a',null,u);l.href=h;l.target='_blank';l.rel='noopener noreferrer';links.appendChild(l);};
       if(a.profile_url) add(a.profile_url);
-      for(const u of a.urls) add(u);
+      for(const u of a.urls||[]) add(u);
       who.appendChild(links); row.appendChild(who);
-      row.appendChild(el('div','sc',a.cosine.toFixed(4)));
+      row.appendChild(el('div','sc',a.cosine==null?'linked':Number(a.cosine).toFixed(4)));
       ab.appendChild(row);
     }
   }
 
-  /* candidates */
-  const cb=card('c-cand','All candidates scored');
-  const tb=el('table'), th=el('thead'), htr=el('tr');
-  for(const [h,c] of [['Post',''],['Cosine','num'],['Verdict','num']]) htr.appendChild(el('th',c,h));
-  th.appendChild(htr); tb.appendChild(th);
-  const body=el('tbody');
-  for(const x of r.rows){
-    const tr=el('tr',x.pass?'pass':'rej'), td=el('td');
-    const h=safeUrl(x.url);
-    if(h){const a=el('a',null,x.url);a.href=h;a.target='_blank';a.rel='noopener noreferrer';td.appendChild(a);}
-    else td.appendChild(el('span','k-dim',x.url));
-    tr.appendChild(td);
-    tr.appendChild(el('td','num',x.cosine.toFixed(4)));
-    tr.appendChild(el('td','num',x.pass?'PASS':'reject'));
-    body.appendChild(tr);
+  if(r.rows&&r.rows.length){
+    const cb=card('c-cand','All candidates scored');
+    const tb=el('table'), th=el('thead'), htr=el('tr');
+    for(const [h,c] of [['Post',''],['Cosine','num'],['Verdict','num']]) htr.appendChild(el('th',c,h));
+    th.appendChild(htr); tb.appendChild(th);
+    const body=el('tbody');
+    for(const x of r.rows){
+      const tr=el('tr',x.pass?'pass':'rej'), td=el('td');
+      const h=safeUrl(x.url);
+      if(h){const a=el('a',null,x.url);a.href=h;a.target='_blank';a.rel='noopener noreferrer';td.appendChild(a);}
+      else td.appendChild(el('span','k-dim',x.url));
+      tr.appendChild(td);
+      tr.appendChild(el('td','num',Number(x.cosine||0).toFixed(4)));
+      tr.appendChild(el('td','num',x.pass?'PASS':'reject'));
+      body.appendChild(tr);
+    }
+    tb.appendChild(body); cb.appendChild(tb);
   }
-  tb.appendChild(body); cb.appendChild(tb);
 
-  /* anchor */
+  renderArtifacts(r);
+  renderEvidence(r);
+  renderPostText(r);
+  renderAnchor(r);
+  renderVerify(r);
+  if(r.record_id!=null && r.record_id!=='') renderSeal(r);
+}
+
+function renderArtifacts(r){
+  const images=r.images||[];
+  const thumbs=r.candidate_thumbs||[];
+  if(!images.length && !thumbs.length) return;
+  const b=card('c-art','Run artifacts');
+  if(images.length){
+    const g=el('div','gallery');
+    for(const name of images){
+      const fig=el('figure');
+      const img=el('img');
+      img.src=artifactUrl(r.run_dir,name);
+      img.alt=IMAGE_LABELS[name]||name;
+      fig.appendChild(img);
+      fig.appendChild(el('figcaption',null,IMAGE_LABELS[name]||name));
+      g.appendChild(fig);
+    }
+    b.appendChild(g);
+  }
+  if(thumbs.length){
+    b.appendChild(el('div','k-dim','Search candidates ('+thumbs.length+')'));
+    const g=el('div','thumbs');
+    for(const name of thumbs){
+      const img=el('img');
+      img.src=artifactUrl(r.run_dir,name);
+      img.alt=name;
+      img.title=name;
+      g.appendChild(img);
+    }
+    b.appendChild(g);
+  }
+}
+
+function renderEvidence(r){
+  const b=card('c-ev','evidence.json \u2014 edit to tamper','warn');
+  b.appendChild(el('div','k-dim',
+    'Change post_url, author_handle, cosine_similarity, or captured_at, then Verify. '
+    +'Verify saves this box first, so you do not have to click Save. File hashes are filled in from the photos and post text and are not editable here.'));
+  const ta=el('textarea','edit json-edit');
+  ta.id='evidence-json';
+  ta.value=r._draftEvidence!=null?r._draftEvidence:(r.evidence?evidenceForEditor(r.evidence):'');
+  ta.addEventListener('input',()=>{if(lastRun) lastRun._draftEvidence=ta.value;});
+  b.appendChild(ta);
+  const actions=el('div','actions');
+  const save=el('button',null,'Save edit');
+  const restore=el('button','ghost','Restore original');
+  save.onclick=()=>saveEvidence(r,ta);
+  restore.onclick=()=>restoreEvidence(r);
+  actions.appendChild(save);
+  actions.appendChild(restore);
+  b.appendChild(actions);
+}
+
+function renderPostText(r){
+  const b=card('c-text','Post text \u2014 edit to tamper','warn');
+  b.appendChild(el('div','k-dim',
+    'This is the live post_text.txt on disk. Change it, save, then re-verify against the chain.'));
+  const ta=el('textarea','edit');
+  ta.id='post-text';
+  ta.value=r._draftPost!=null?r._draftPost:(r.post_text||'');
+  ta.addEventListener('input',()=>{if(lastRun) lastRun._draftPost=ta.value;});
+  b.appendChild(ta);
+  const actions=el('div','actions');
+  const save=el('button',null,'Save edit');
+  const restore=el('button','ghost','Restore original');
+  save.onclick=()=>savePostText(r,ta);
+  restore.onclick=()=>restorePostText(r);
+  actions.appendChild(save);
+  actions.appendChild(restore);
+  b.appendChild(actions);
+  b.appendChild(hashEl('current bundle hash  '+(r.evidence_hash||'')));
+}
+
+function renderAnchor(r){
+  if(r.awaiting_anchor){
+    const anb=card('c-anchor','Anchor on-chain','warn');
+    anb.appendChild(kv([
+      ['Network',r.network||'\u2014'],
+      ['Chain id',r.chain_id||'\u2014'],
+      ['Contract',el('span','hash',r.contract||'(none in .env)')],
+      ['Evidence hash',hashEl(r.evidence_hash)],
+      ['Run directory',r.run_dir],
+    ]));
+    const note=el('div','explain');
+    note.appendChild(el('strong','','Sepolia demo: '));
+    note.appendChild(document.createTextNode(
+      'MetaMask will ask you to confirm the transaction and pay gas in Sepolia ETH. '
+      +'The server key is not used for this step.'));
+    anb.appendChild(note);
+    const actions=el('div','actions');
+    if(r.network==='local'){
+      const localBtn=el('button',null,'Anchor locally');
+      localBtn.onclick=()=>anchorLocal(r,localBtn);
+      actions.appendChild(localBtn);
+    }else{
+      const mm=el('button','wallet','Sign with MetaMask');
+      mm.onclick=()=>anchorWallet(r,mm);
+      actions.appendChild(mm);
+    }
+    anb.appendChild(actions);
+    return;
+  }
   const anb=card('c-anchor','Anchored on-chain','ok');
   const ex=safeUrl(explorerUrl(r.network,r.tx));
-  let txNode=el('span','hash',r.tx);
+  let txNode=el('span','hash',r.tx||'\u2014');
   if(ex){const a=el('a','hash',r.tx);a.href=ex;a.target='_blank';a.rel='noopener noreferrer';txNode=a;}
   anb.appendChild(kv([
     ['Network',r.network],['Contract',el('span','hash',r.contract)],
     ['Record id',r.record_id],['Transaction',txNode],
-    ['Evidence hash',hashEl(r.evidence_hash)],['Run directory',r.run_dir],
+    ['Evidence hash',hashEl(r.anchored_hash||r.evidence_hash)],['Run directory',r.run_dir],
   ]));
+}
 
-  /* re-verification */
-  const vb=card('c-verify','Re-verification',r.verified_match?'ok':'bad');
-  vb.appendChild(kv([
-    ['On-chain',hashEl(r.evidence_hash)],
-    ['Recomputed',hashEl(r.evidence_hash)],
-  ]));
-  const v=el('div','verdict '+(r.verified_match?'ok':'bad'),
-    r.verified_match?'Match — record intact':'Mismatch');
-  v.style.marginTop='12px'; vb.appendChild(v);
+function renderVerify(r){
+  const anchored=r.record_id!=null && r.record_id!=='';
+  const cls=r.verified_match===true?'ok':r.verified_match===false?'bad':'';
+  const vb=card('c-verify','Re-verification',cls);
+  if(!anchored){
+    vb.appendChild(el('div','k-dim','Anchor first, then recompute the bundle from the files you see above.'));
+    return;
+  }
+  if(r.onchain_hash && r.recomputed_hash){
+    vb.appendChild(kv([
+      ['On-chain',hashEl(r.onchain_hash)],
+      ['Recomputed from disk',hashEl(r.recomputed_hash)],
+    ]));
+    const v=el('div','verdict '+(r.verified_match?'ok':'bad'),
+      r.verified_match?'Match \u2014 record intact':'Mismatch \u2014 evidence has been altered');
+    v.style.marginTop='12px'; vb.appendChild(v);
+  }else{
+    vb.appendChild(el('div','k-dim',
+      'Press verify to read the on-chain hash and recompute it from the current files.'));
+  }
+  const actions=el('div','actions');
+  const btn=el('button',null,'Verify against chain');
+  btn.onclick=()=>verifyNow(r,btn);
+  actions.appendChild(btn);
+  vb.appendChild(actions);
   const exp=el('div','explain');
   exp.appendChild(el('strong','','What this proves: '));
   exp.appendChild(document.createTextNode(
     'the hash read back from the blockchain equals a hash recomputed from the artifact files on '
-    +'disk. The two were produced independently; nothing was altered after anchoring.'));
+    +'disk. Edit the boxes above and press verify \u2014 the current text is saved first.'));
   vb.appendChild(exp);
-
-  if(r.verified_match) renderSeal(r);
 }
 
 /* Returns a candidate URL string. Validation happens at the assignment site, like every other
    href, so there is exactly one rule to check rather than one rule plus an exception. */
 function explorerUrl(net,tx){
   if(!tx) return '';
+  const h=String(tx).replace(/^0x/i,'');
   const base = net==='sepolia' ? 'https://sepolia.etherscan.io/tx/0x'
              : net==='base-sepolia' ? 'https://sepolia.basescan.org/tx/0x' : '';
-  return base ? base+tx : '';
+  return base ? base+h : '';
+}
+
+function chainBody(r){
+  return {run_dir:r.run_dir, network:r.network, record_id:r.record_id, contract:r.contract};
+}
+
+async function savePostText(r,ta){
+  try{
+    const j=await apiPost('/api/post-text',{run_dir:r.run_dir, text:ta.value});
+    lastRun.post_text=ta.value;
+    lastRun._draftPost=null;
+    lastRun.evidence_hash=j.evidence_hash;
+    lastRun.verified_match=null;
+    lastRun.onchain_hash=null;
+    lastRun.recomputed_hash=null;
+    line('saved post_text.txt','ok');
+    line('new bundle hash  '+j.evidence_hash,'hash');
+    rerender(false);
+  }catch(e){line('Save failed: '+e.message,'err');}
+}
+
+async function restorePostText(r){
+  try{
+    const j=await apiPost('/api/post-text/restore',{run_dir:r.run_dir});
+    lastRun.post_text=j.post_text;
+    lastRun._draftPost=null;
+    lastRun.evidence_hash=j.evidence_hash;
+    lastRun.verified_match=null;
+    lastRun.onchain_hash=null;
+    lastRun.recomputed_hash=null;
+    line('restored original post_text.txt','ok');
+    line('bundle hash  '+j.evidence_hash,'hash');
+    rerender(false);
+  }catch(e){line('Restore failed: '+e.message,'err');}
+}
+
+function applyEvidenceEdit(j){
+  lastRun.evidence=j.evidence;
+  lastRun.evidence_hash=j.evidence_hash;
+  lastRun._draftEvidence=null;
+  lastRun.verified_match=null;
+  lastRun.onchain_hash=null;
+  lastRun.recomputed_hash=null;
+  const m=j.evidence&&j.evidence.match;
+  const v=j.evidence&&j.evidence.verification;
+  if(m&&m.post_url) lastRun.match=m.post_url;
+  if(v&&v.cosine_similarity!=null) lastRun.cosine=Number(v.cosine_similarity);
+}
+
+async function saveEvidence(r,ta){
+  try{
+    const j=await apiPost('/api/evidence',{run_dir:r.run_dir, text:ta.value});
+    applyEvidenceEdit(j);
+    if(j.digest_only_edit){
+      line('saved, but only file-hash fields changed \u2014 those are recomputed from photos/post text, so the bundle hash is unchanged. Edit post_url or cosine_similarity instead.','warn');
+    }else{
+      line('saved evidence.json','ok');
+      line('new bundle hash  '+j.evidence_hash,'hash');
+    }
+    rerender(false);
+  }catch(e){line('Save failed: '+e.message,'err');}
+}
+
+async function restoreEvidence(r){
+  try{
+    const j=await apiPost('/api/evidence/restore',{run_dir:r.run_dir});
+    applyEvidenceEdit(j);
+    line('restored original evidence.json','ok');
+    line('bundle hash  '+j.evidence_hash,'hash');
+    rerender(false);
+  }catch(e){line('Restore failed: '+e.message,'err');}
+}
+
+async function verifyNow(r,btn){
+  btn.disabled=true;
+  line('re-verifying against '+r.network+' record '+r.record_id,'step');
+  try{
+    const body=chainBody(r);
+    const ev=$('#evidence-json'), pt=$('#post-text');
+    if(ev) body.evidence_text=ev.value;
+    if(pt) body.post_text=pt.value;
+    const j=await apiPost('/api/verify', body);
+    lastRun.onchain_hash=j.onchain_hash;
+    lastRun.recomputed_hash=j.recomputed_hash;
+    lastRun.verified_match=j.matches;
+    lastRun.anchored_hash=j.onchain_hash;
+    if(j.evidence){
+      lastRun.evidence=j.evidence;
+      lastRun._draftEvidence=null;
+      const m=j.evidence.match||{};
+      const v=j.evidence.verification||{};
+      if(m.post_url) lastRun.match=m.post_url;
+      if(v.cosine_similarity!=null) lastRun.cosine=Number(v.cosine_similarity);
+    }
+    if(j.evidence_hash) lastRun.evidence_hash=j.evidence_hash;
+    if(j.post_text!=null){ lastRun.post_text=j.post_text; lastRun._draftPost=null; }
+    line('on-chain    '+j.onchain_hash,'hash');
+    line('recomputed  '+j.recomputed_hash,'hash');
+    if(j.digest_only_edit && j.matches){
+      line('file hashes were restored from the photos/post text, so the chain still matches. change post_url, author_handle, or cosine_similarity.','warn');
+    }
+    line(j.matches?'MATCH  record intact':'MISMATCH  evidence has been altered',
+         j.matches?'ok':'err');
+    rerender(false);
+  }catch(e){line('Verify failed: '+e.message,'err');}
+  finally{btn.disabled=false;}
+}
+
+async function applyAnchor(j){
+  lastRun.awaiting_anchor=false;
+  lastRun.record_id=j.record_id;
+  lastRun.tx=as0x(j.tx);
+  lastRun.contract=j.contract||lastRun.contract;
+  lastRun.evidence_hash=j.evidence_hash||lastRun.evidence_hash;
+  lastRun.anchored_hash=j.evidence_hash||lastRun.evidence_hash;
+  lastRun.verified_match=null;
+  line('anchored record '+j.record_id,'ok');
+  line('tx  '+as0x(j.tx),'hash');
+  refreshRuns();
+  rerender();
+}
+
+async function anchorLocal(r,btn){
+  btn.disabled=true;
+  line('anchoring on in-process local chain','step');
+  try{
+    const j=await apiPost('/api/anchor/local', chainBody(r));
+    await applyAnchor(j);
+  }catch(e){line('Local anchor failed: '+e.message,'err'); btn.disabled=false;}
+}
+
+async function ensureChain(chainId){
+  const hex='0x'+Number(chainId).toString(16);
+  const cur=await window.ethereum.request({method:'eth_chainId'});
+  if(String(cur).toLowerCase()===hex.toLowerCase()) return;
+  try{
+    await window.ethereum.request({method:'wallet_switchEthereumChain',params:[{chainId:hex}]});
+  }catch(e){
+    if(e && e.code===4902){
+      const p=CHAIN_PARAMS[Number(chainId)];
+      if(!p) throw e;
+      await window.ethereum.request({method:'wallet_addEthereumChain',params:[p]});
+    }else throw e;
+  }
+}
+
+async function anchorWallet(r,btn){
+  if(!window.ethereum){
+    line('MetaMask was not found in this browser.','err');
+    return;
+  }
+  btn.disabled=true;
+  line('asking MetaMask to sign the Sepolia anchor','step');
+  try{
+    const accounts=await window.ethereum.request({method:'eth_requestAccounts'});
+    if(!accounts||!accounts.length) throw new Error('no wallet account');
+    if(r.chain_id) await ensureChain(r.chain_id);
+    const prep=await apiPost('/api/anchor/prepare', chainBody(r));
+    line('unsigned call ready  to '+shortAddr(prep.to),'ok');
+    const txHash=await window.ethereum.request({
+      method:'eth_sendTransaction',
+      params:[{from:accounts[0], to:prep.to, data:prep.data, value:'0x0'}]
+    });
+    line('wallet submitted  '+as0x(txHash),'hash');
+    line('waiting for the network receipt\u2026','step');
+    const j=await apiPost('/api/anchor/confirm', Object.assign(chainBody(r),{tx_hash:txHash}));
+    await applyAnchor(j);
+  }catch(e){
+    const msg=e&&e.message?e.message:String(e);
+    line('Wallet anchor failed: '+msg,'err');
+    btn.disabled=false;
+  }
 }
 
 /* ── the seal: operator-triggered tamper test ─────────────────────────── */
 function renderSeal(r){
-  rail('recheck','done');
-  const b=card('c-seal','Tamper test','warn');
+  const b=card('c-seal','Scratch tamper test','warn');
   const s=el('div','seal');
-  s.appendChild(el('div','warn-title','Destructive test — run on request'));
+  s.appendChild(el('div','warn-title','Optional \u2014 does not touch the files above'));
   s.appendChild(el('p',null,
-    'This flips one byte of the post-text file, rebuilds the evidence bundle from the altered '
-    +'source, and re-checks it against the blockchain. The mutation is applied to a scratch copy, '
-    +'so the evidence you just anchored is never touched.'));
+    'This flips one byte of the post-text file on a scratch copy and re-checks it against the '
+    +'blockchain. Use the editor above if you want to tamper the real artifact and verify it yourself.'));
   const btn=el('button','break','Break the seal');
   btn.onclick=()=>runTamper(r,btn,s);
   s.appendChild(btn);
@@ -556,23 +986,19 @@ async function runTamper(r,btn,seal){
 
   let j;
   try{
-    const resp=await fetch('/api/tamper',{method:'POST',
-      headers:{'content-type':'application/json','x-csrf-token':csrfToken()},
-      body:JSON.stringify({run_dir:r.run_dir,record_id:r.record_id,network:r.network})});
-    j=await resp.json();
-    if(!resp.ok){line('Tamper test failed: '+(j.detail||resp.status),'err');
-      btn.disabled=false;btn.classList.remove('breaking');rail('recheck','done');return;}
-  }catch(e){line('Tamper test failed: '+e,'err');btn.disabled=false;rail('recheck','done');return;}
+    j=await apiPost('/api/tamper', chainBody(r));
+  }catch(e){line('Tamper test failed: '+e.message,'err');
+    btn.disabled=false;btn.classList.remove('breaking');return;}
 
   line('on-chain    '+j.onchain_hash,'hash');
   line('recomputed  '+j.tampered_hash,'hash');
-  line(j.detected?'MISMATCH — evidence has been altered':'TAMPER NOT DETECTED — bug',
+  line(j.detected?'MISMATCH \u2014 evidence has been altered':'TAMPER NOT DETECTED \u2014 bug',
        j.detected?'err':'err');
   rail('recheck',j.detected?'done':'bad');
 
   seal.textContent='';
   seal.appendChild(el('div','warn-title',
-    j.detected?'Seal broken — alteration detected':'Seal broken — NOT detected (bug)'));
+    j.detected?'Seal broken \u2014 alteration detected':'Seal broken \u2014 NOT detected (bug)'));
   const cmp=el('div','cmp');
   const mk=(tag,val,diff)=>{
     const row=el('div','row'+(diff?' diff':''));
@@ -586,7 +1012,7 @@ async function runTamper(r,btn,seal){
   seal.appendChild(cmp);
 
   const v=el('div','verdict '+(j.detected?'bad':'ok'),
-    j.detected?'Mismatch — alteration detected':'No mismatch — investigate');
+    j.detected?'Mismatch \u2014 alteration detected':'No mismatch \u2014 investigate');
   v.style.marginTop='14px'; seal.appendChild(v);
 
   const exp=el('div','explain');
@@ -598,7 +1024,7 @@ async function runTamper(r,btn,seal){
 
   seal.appendChild(el('div','note',
     j.originals_unchanged
-      ? 'Original artifacts verified byte-identical — the test ran on a scratch copy.'
+      ? 'Original artifacts verified byte-identical \u2014 the test ran on a scratch copy.'
       : 'WARNING: original artifacts changed. That is a bug; report it.'));
 }
 </script>

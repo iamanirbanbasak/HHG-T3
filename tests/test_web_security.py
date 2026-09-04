@@ -14,6 +14,7 @@ process, can reach 127.0.0.1.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -62,6 +63,14 @@ class TestPathConfinement:
     def test_allowed_suffixes_are_images_only(self):
         assert ".txt" not in ALLOWED_SUFFIXES and ".py" not in ALLOWED_SUFFIXES
         assert ".jpg" in ALLOWED_SUFFIXES and ".heic" in ALLOWED_SUFFIXES
+
+    def test_rel_to_project_accepts_relative_artifact_paths(self):
+        """new_run_dir() returns artifacts/run-… relative. Mix that with absolute PROJECT_ROOT."""
+        from facechain.web import _rel_to_project
+
+        rel = Path("artifacts") / "run-deadbeefcaf"
+        assert _rel_to_project(rel) == "artifacts/run-deadbeefcaf"
+        assert _rel_to_project(PROJECT_ROOT / rel) == "artifacts/run-deadbeefcaf"
 
 
 class TestCsrf:
@@ -127,6 +136,7 @@ class TestConfigEndpoint:
         assert r.status_code == 200
         assert set(r.json()) >= {
             "provider", "network", "threshold", "has_serpapi", "has_imgbb", "has_facecheck",
+            "contract", "chain_id",
         }
 
     def test_config_never_leaks_key_values(self, client):
@@ -231,3 +241,195 @@ class TestNetworkDefault:
         monkeypatch.setattr(facechain.cli, "_load_dotenv", lambda: None)
         monkeypatch.delenv("NETWORK", raising=False)
         assert _cfg({}).network == "local"
+
+
+class TestArtifactAndDemoEndpoints:
+    """The demo UI reads and edits files under artifacts/. Those paths stay confined."""
+
+    @pytest.fixture
+    def client(self):
+        from fastapi.testclient import TestClient
+
+        from facechain.web import create_app
+
+        return TestClient(create_app())
+
+    def test_unknown_artifact_is_404(self, client):
+        r = client.get("/api/artifact/secret.py", params={"run_dir": "artifacts"})
+        assert r.status_code == 404
+
+    def test_artifact_rejects_path_escape(self, client):
+        r = client.get("/api/artifact/../../pyproject.toml", params={"run_dir": "artifacts"})
+        assert r.status_code in (400, 404)
+
+    def test_post_text_requires_csrf(self, client):
+        r = client.post("/api/post-text", json={"run_dir": "artifacts", "text": "x"})
+        assert r.status_code == 403
+
+    def test_restore_requires_csrf(self, client):
+        r = client.post("/api/post-text/restore", json={"run_dir": "artifacts"})
+        assert r.status_code == 403
+
+    def test_evidence_requires_csrf(self, client):
+        r = client.post("/api/evidence", json={"run_dir": "artifacts", "text": "{}"})
+        assert r.status_code == 403
+
+    def test_evidence_restore_requires_csrf(self, client):
+        r = client.post("/api/evidence/restore", json={"run_dir": "artifacts"})
+        assert r.status_code == 403
+
+    def test_prepare_requires_csrf(self, client):
+        r = client.post("/api/anchor/prepare", json={"run_dir": "artifacts", "network": "sepolia"})
+        assert r.status_code == 403
+
+    def test_verify_requires_csrf(self, client):
+        r = client.post("/api/verify", json={"run_dir": "artifacts", "record_id": 0})
+        assert r.status_code == 403
+
+    def test_local_anchor_requires_csrf(self, client):
+        r = client.post("/api/anchor/local", json={"run_dir": "artifacts", "network": "local"})
+        assert r.status_code == 403
+
+    def test_local_anchor_rejected_on_sepolia(self, client):
+        r = client.post(
+            "/api/anchor/local",
+            json={"run_dir": "artifacts", "network": "sepolia"},
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        assert r.status_code == 400
+        assert "MetaMask" in r.json()["detail"]
+
+    def test_prepare_rejected_on_local(self, client):
+        r = client.post(
+            "/api/anchor/prepare",
+            json={"run_dir": "artifacts", "network": "local"},
+            headers={"x-csrf-token": CSRF_TOKEN},
+        )
+        assert r.status_code == 400
+
+    def test_runs_lists_artifact_folders(self, client):
+        r = client.get("/api/runs")
+        assert r.status_code == 200
+        assert "runs" in r.json()
+
+    def test_load_missing_run_is_400(self, client):
+        r = client.get("/api/load", params={"run_dir": "artifacts/does-not-exist"})
+        assert r.status_code == 400
+
+    def test_post_text_and_restore_round_trip(self, client):
+        from facechain.evidence import write_bundle
+
+        run = PROJECT_ROOT / "artifacts" / "_sec_demo_run"
+        run.mkdir(parents=True, exist_ok=True)
+        try:
+            (run / "probe.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 16)
+            (run / "candidate.jpg").write_bytes(b"\xff\xd8\xff" + b"y" * 16)
+            (run / "post_text.txt").write_text("original caption", encoding="utf-8")
+            write_bundle(run, {
+                "schema": "hhg-t3/evidence/v1",
+                "probe": {"bbox": [0, 0, 1, 1], "det_score": 0.9, "embedding_sha256": "aa",
+                          "faces_detected": 1, "models": {}, "image_sha256": "x"},
+                "search": {"provider": "google_lens", "queried_at": "t", "query_image_sha256": "q",
+                           "queries": [], "n_candidates": 1, "n_social": 1, "n_face_verified": 1},
+                "match": {"post_url": "https://example.com/p/1", "platform": "x", "author_handle": "h",
+                          "image_url": "https://example.com/i.jpg", "image_sha256": "y",
+                          "post_text_sha256": "z", "captured_at": "t"},
+                "verification": {"cosine_similarity": 0.5, "threshold": 0.45, "passed": True},
+            })
+            loaded = client.get("/api/load", params={"run_dir": "artifacts/_sec_demo_run"})
+            assert loaded.status_code == 200
+            body = loaded.json()
+            assert body["awaiting_anchor"] is True
+            assert "original caption" in body["post_text"]
+            assert "probe.jpg" in body["images"]
+
+            img = client.get("/api/artifact/probe.jpg", params={"run_dir": "artifacts/_sec_demo_run"})
+            assert img.status_code == 200
+            assert img.content.startswith(b"\xff\xd8\xff")
+
+            saved = client.post(
+                "/api/post-text",
+                json={"run_dir": "artifacts/_sec_demo_run", "text": "tampered caption"},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert saved.status_code == 200
+            assert saved.json()["evidence_hash"] != body["evidence_hash"]
+
+            restored = client.post(
+                "/api/post-text/restore",
+                json={"run_dir": "artifacts/_sec_demo_run"},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert restored.status_code == 200
+            assert restored.json()["post_text"] == "original caption"
+            assert restored.json()["evidence_hash"] == body["evidence_hash"]
+        finally:
+            import shutil
+
+            shutil.rmtree(run, ignore_errors=True)
+
+    def test_evidence_edit_and_restore_round_trip(self, client):
+        from facechain.evidence import write_bundle
+
+        run = PROJECT_ROOT / "artifacts" / "_sec_ev_run"
+        run.mkdir(parents=True, exist_ok=True)
+        try:
+            (run / "probe.jpg").write_bytes(b"\xff\xd8\xff" + b"x" * 16)
+            (run / "candidate.jpg").write_bytes(b"\xff\xd8\xff" + b"y" * 16)
+            (run / "post_text.txt").write_text("caption", encoding="utf-8")
+            bundle = {
+                "schema": "hhg-t3/evidence/v1",
+                "probe": {"bbox": [0, 0, 1, 1], "det_score": 0.9, "embedding_sha256": "aa",
+                          "faces_detected": 1, "models": {}, "image_sha256": "x"},
+                "search": {"provider": "google_lens", "queried_at": "t", "query_image_sha256": "q",
+                           "queries": [], "n_candidates": 1, "n_social": 1, "n_face_verified": 1},
+                "match": {"post_url": "https://example.com/p/1", "platform": "x", "author_handle": "h",
+                          "image_url": "https://example.com/i.jpg", "image_sha256": "y",
+                          "post_text_sha256": "z", "captured_at": "t"},
+                "verification": {"cosine_similarity": 0.5, "threshold": 0.45, "passed": True},
+            }
+            write_bundle(run, bundle)
+            loaded = client.get("/api/load", params={"run_dir": "artifacts/_sec_ev_run"})
+            assert loaded.status_code == 200
+            original = loaded.json()["evidence_hash"]
+
+            bad = client.post(
+                "/api/evidence",
+                json={"run_dir": "artifacts/_sec_ev_run", "text": "{not json"},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert bad.status_code == 400
+
+            edited = dict(bundle)
+            edited["match"] = dict(bundle["match"], post_url="https://example.com/p/TAMPERED")
+            saved = client.post(
+                "/api/evidence",
+                json={"run_dir": "artifacts/_sec_ev_run", "text": json.dumps(edited)},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert saved.status_code == 200
+            assert saved.json()["evidence_hash"] != original
+            assert saved.json()["evidence"]["match"]["post_url"].endswith("TAMPERED")
+
+            restored = client.post(
+                "/api/evidence/restore",
+                json={"run_dir": "artifacts/_sec_ev_run"},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert restored.status_code == 200
+            assert restored.json()["evidence_hash"] == original
+
+            digest = json.loads(json.dumps(bundle))
+            digest["probe"]["image_sha256"] = "ab" * 32
+            only_hash = client.post(
+                "/api/evidence",
+                json={"run_dir": "artifacts/_sec_ev_run", "text": json.dumps(digest)},
+                headers={"x-csrf-token": CSRF_TOKEN},
+            )
+            assert only_hash.status_code == 200
+            assert only_hash.json()["digest_only_edit"] is True
+            assert only_hash.json()["evidence_hash"] == original
+        finally:
+            import shutil
+
+            shutil.rmtree(run, ignore_errors=True)

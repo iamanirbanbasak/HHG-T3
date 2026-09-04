@@ -99,6 +99,21 @@ def test_no_mutation_path_in_abi():
     assert mutating == {"anchor"}
 
 
+def test_encode_anchor_call_matches_contract(chain):
+    from facechain.chain.registry import encode_anchor_call
+
+    w3, reg, _ = chain
+    abi, _ = compile_registry()
+    data = encode_anchor_call(w3, reg.address, list(abi), HASH_A, URL, 7123)
+    assert isinstance(data, str) and data.startswith("0x")
+    fn, args = w3.eth.contract(address=reg.address, abi=list(abi)).decode_function_input(data)
+    assert fn.fn_name == "anchor"
+    vals = list(args.values())
+    assert HASH_A in vals or bytes(vals[0]) == HASH_A
+    assert URL in vals
+    assert 7123 in vals
+
+
 def test_unknown_record_raises(chain):
     _, reg, _ = chain
     with pytest.raises(ChainError):

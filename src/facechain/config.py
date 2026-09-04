@@ -72,6 +72,12 @@ DEFAULT_RPC_URLS: dict[str, str] = {
     "sepolia": "https://rpc.sepolia.org",
 }
 
+# EIP-155 chain ids. `local` is eth-tester and has no public chain id.
+CHAIN_IDS: dict[str, int] = {
+    "sepolia": 11155111,
+    "base-sepolia": 84532,
+}
+
 
 class _Secret(str):
     """A string whose repr is redacted, so a Config is always safe to log."""

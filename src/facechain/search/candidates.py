@@ -72,10 +72,34 @@ def is_social(url: str, cfg: Config) -> bool:
     return False
 
 
+# Path shapes that are a *post*, not a profile hub. Google Lens often returns dozens of
+# similar-looking LinkedIn /in/ thumbnails first; an Instagram /p/ of the same photo then
+# falls off max_candidates and never gets face-scored.
+_POST_PATH = re.compile(
+    r"/(?:p|reel|reels|posts|status|photo|photos|videos?|permalink|activity)(?:/|$)",
+    re.I,
+)
+
+
+def looks_like_post(url: str) -> bool:
+    """True for a permalink-shaped URL (Instagram /p/, X /status/, LinkedIn /posts/, ...)."""
+    try:
+        path = urlsplit(url).path or ""
+    except ValueError:
+        return False
+    return bool(_POST_PATH.search(path))
+
+
 def filter_social(cands: list[Candidate], cfg: Config) -> list[Candidate]:
-    """Keep social-media candidates, de-duplicated, in first-seen order."""
+    """Keep social-media candidates, de-duplicated.
+
+    Posts are kept ahead of profile hubs when applying max_candidates, so a flood of
+    LinkedIn /in/ lookalikes cannot push an Instagram permalink out of the scoring set.
+    Within each group, first-seen order is preserved.
+    """
     seen: set[str] = set()
-    out: list[Candidate] = []
+    posts: list[Candidate] = []
+    other: list[Candidate] = []
     for c in cands:
         if not is_social(c.page_url, cfg):
             continue
@@ -83,10 +107,9 @@ def filter_social(cands: list[Candidate], cfg: Config) -> list[Candidate]:
         if key in seen:
             continue
         seen.add(key)
-        out.append(c)
-        if len(out) >= cfg.max_candidates:
-            break
-    return out
+        (posts if looks_like_post(c.page_url) else other).append(c)
+    ranked = posts + other
+    return ranked[: cfg.max_candidates]
 
 
 def union(*groups: list[Candidate]) -> list[Candidate]:

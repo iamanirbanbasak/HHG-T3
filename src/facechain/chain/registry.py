@@ -115,3 +115,17 @@ class Registry:
 
     def verify_onchain(self, record_id: int, candidate: bytes) -> bool:
         return bool(self._c.functions.verify(record_id, candidate).call())
+
+
+def encode_anchor_call(w3, address: str, abi: list, evidence_hash: bytes, post_url: str, sim_bps: int) -> str:
+    """ABI-encode `anchor(...)` so a browser wallet can sign the transaction."""
+    if len(evidence_hash) != 32:
+        raise ChainError("evidence hash must be 32 bytes", {"got": len(evidence_hash)})
+    contract = w3.eth.contract(address=w3.to_checksum_address(address), abi=abi)
+    encode = getattr(contract, "encode_abi", None) or getattr(contract, "encodeABI", None)
+    if encode is None:
+        raise ChainError("web3 contract cannot ABI-encode a call")
+    try:
+        return encode("anchor", args=[evidence_hash, post_url, int(sim_bps)])
+    except TypeError:
+        return encode(fn_name="anchor", args=[evidence_hash, post_url, int(sim_bps)])
