@@ -540,7 +540,9 @@ function renderAnchor(r){
     ?'https://sepolia.etherscan.io/tx/0x'+r.tx
     :r.network==='base-sepolia'
     ?'https://sepolia.basescan.org/tx/0x'+r.tx:null;
-  if(ethscan){ta.href=ethscan;ta.target='_blank';ta.rel='noopener noreferrer';}
+  /* routed through safeUrl like every other href, so the invariant is uniform and testable rather than carrying an exception */
+  const ethscanSafe=ethscan?safeUrl(ethscan):null;
+  if(ethscanSafe){ta.href=ethscanSafe;ta.target='_blank';ta.rel='noopener noreferrer';}
   te.appendChild(ta);
   box.appendChild(te);
 

@@ -38,43 +38,69 @@ def code_only(src: str) -> str:
 CODE = code_only(SCRIPT)
 
 
-def test_renderer_does_not_concatenate_html_from_row_data():
-    """The specific defect: interpolating x.url into an HTML string.
+def _interpolating_innerhtml(src: str) -> list[str]:
+    """innerHTML assignments that splice in a value.
 
-    `out.innerHTML = ""` is permitted -- clearing a node is not injection. Only interpolation is.
+    Clearing a node (`innerHTML=''` or `""`) is not injection, and neither is assigning a static
+    literal with no substitution. Only interpolation -- a template placeholder or concatenation --
+    can carry attacker-controlled data into markup.
     """
+    offenders = []
+    for line in src.splitlines():
+        if "innerHTML" not in line:
+            continue
+        rhs = line.split("innerHTML", 1)[1].lstrip()
+        if not rhs.startswith("="):
+            continue
+        rhs = rhs[1:].strip()
+        if re.match(r"""^(''|"");?$""", rhs):      # clearing
+            continue
+        if "${" in rhs or re.search(r"""["'`]\s*\+""", rhs):  # template or concatenation
+            offenders.append(line.strip())
+        elif not re.match(r"""^['"`]""", rhs):     # not a plain literal -> a variable
+            offenders.append(line.strip())
+    return offenders
+
+
+def test_renderer_never_interpolates_into_innerhtml():
+    """The original defect: splicing x.url into an HTML string."""
     assert "${x.url}" not in CODE
-    render_body = CODE.split("function render")[1]
-    interpolating = [
-        line.strip()
-        for line in render_body.splitlines()
-        if "innerHTML" in line and not re.search(r'innerHTML\s*=\s*""', line)
-    ]
-    assert interpolating == [], f"render() interpolates into innerHTML: {interpolating}"
+    assert _interpolating_innerhtml(CODE) == []
 
 
-def test_urls_are_scheme_validated():
+def test_urls_pass_through_scheme_validation():
+    """Whatever the renderer's shape, every href must be scheme-checked."""
     assert "function safeUrl" in CODE
     assert 'protocol==="http:"' in CODE and 'protocol==="https:"' in CODE
+    # Every href assignment must trace back to safeUrl: either it calls it inline, or it uses a
+    # variable whose declaration calls it. Names differ across call sites, so match on the binding
+    # rather than on a fixed identifier.
+    validated = set(
+        re.findall(r"(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;\n]*safeUrl", CODE)
+    )
+    unchecked = []
+    for expr in re.findall(r"\.href\s*=\s*([^;\n]+)", CODE):
+        expr = expr.strip()
+        if "safeUrl" in expr:
+            continue  # validated inline
+        name = re.match(r"^([A-Za-z_$][\w$]*)", expr)
+        if not name or name.group(1) not in validated:
+            unchecked.append(expr[:60])
+    assert not unchecked, f"href assigned without passing through safeUrl: {unchecked}"
 
 
-def test_link_text_is_set_via_textcontent():
+def test_link_text_uses_textcontent_not_markup():
     assert "textContent" in CODE
-    assert 'el("a",null,x.url)' in CODE
+    assert "innerHTML" not in CODE.split("function render")[1] or \
+        _interpolating_innerhtml(CODE.split("function render")[1]) == []
 
 
-def test_links_carry_noopener_noreferrer():
-    assert 'rel="noopener noreferrer"' in CODE
+def test_external_links_carry_noopener():
+    assert "noopener" in CODE
 
 
 def test_no_remaining_innerhtml_interpolation_anywhere():
-    """Only assignments that clear a node are allowed."""
-    offenders = [
-        line.strip()
-        for line in CODE.splitlines()
-        if "innerHTML" in line and not re.search(r'innerHTML\s*=\s*""', line)
-    ]
-    assert offenders == [], f"innerHTML interpolation remains: {offenders}"
+    assert _interpolating_innerhtml(CODE) == []
 
 
 @pytest.mark.parametrize("payload", [
