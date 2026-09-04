@@ -288,6 +288,11 @@ def run(
     profile = Account(platform=platform_of(top.candidate.page_url), handle=owner).profile_url if owner else None
     linked = _linked_from_verified_page(top, survivors, cfg, providers)
     expanded = _expand_same_handle(probe_vec, top, survivors, run_dir, cfg, providers, handle=owner)
+    known_urls = {normalise_url(s.candidate.page_url) for s in survivors}
+    known_urls.update(normalise_url(s.candidate.page_url) for s in expanded)
+    known_urls.update(normalise_url(u) for a in linked for u in a.urls)
+    if owner:
+        linked.extend(_linkedin_claim(owner, known_urls))
     shutil.copyfile(top.image_path, run_dir / CANDIDATE_IMAGE)
 
     text = post_text_for(top.candidate) if post_text_for else _post_text(top.candidate)
@@ -345,7 +350,9 @@ def _linked_from_verified_page(
     try:
         html = providers.fetch_page(page, cfg)
     except Exception as exc:  # noqa: BLE001 - enrichment must not abort a verified run
-        log.warning("could not read verified page for linked profiles: %s", exc)
+        # LinkedIn (and others) often return 999 / block scrapers. The verified URL is still
+        # a real match; we just cannot read outbound socials from the HTML.
+        log.debug("could not read verified page for linked profiles: %s", exc)
         return []
 
     urls = extract_profile_links(html, page, cfg)
@@ -353,7 +360,7 @@ def _linked_from_verified_page(
         try:
             hub_html = providers.fetch_page(hub, cfg)
         except Exception as exc:  # noqa: BLE001
-            log.warning("could not read link-in-bio page: %s", exc)
+            log.debug("could not read link-in-bio page: %s", exc)
             continue
         urls.extend(extract_profile_links(hub_html, hub, cfg))
 
@@ -362,6 +369,32 @@ def _linked_from_verified_page(
     if not urls:
         return []
 
+    accounts = group_accounts([(u, 0.0) for u in urls])
+    for a in accounts:
+        a.origin = "linked"
+    return accounts
+
+
+def _linkedin_claim(handle: str, known: set[str]) -> list[Account]:
+    """Keep a LinkedIn profile URL even when LinkedIn refuses to serve the page (HTTP 999).
+
+    Same-handle expansion needs HTML to face-score the avatar. Blocking that fetch used to
+    drop the URL entirely. The link is still a handle-based claim, not a face match.
+    """
+    h = handle.strip().lstrip("@")
+    if not h:
+        return []
+    from .search.page_links import profile_guesses
+
+    urls: list[str] = []
+    for platform, page, _avatar in profile_guesses(h, skip_platform=""):
+        if platform != "linkedin":
+            continue
+        if normalise_url(page) in known:
+            continue
+        urls.append(page)
+    if not urls:
+        return []
     accounts = group_accounts([(u, 0.0) for u in urls])
     for a in accounts:
         a.origin = "linked"
@@ -401,7 +434,7 @@ def _expand_same_handle(
             try:
                 html = providers.fetch_page(page, cfg)
             except Exception as exc:  # noqa: BLE001
-                log.info("same-handle %s unreachable: %s", page, exc)
+                log.debug("same-handle %s unreachable: %s", page, exc)
                 continue
             image_url = og_image(html, page)
         if not image_url:
@@ -415,7 +448,7 @@ def _expand_same_handle(
         try:
             found = providers.web_search(handle, cfg) or []
         except Exception as exc:  # noqa: BLE001 - enrichment must not abort a verified run
-            log.warning("linkedin search failed: %s", exc)
+            log.debug("linkedin search failed: %s", exc)
             found = []
         for c in found:
             if normalise_url(c.page_url) in known:

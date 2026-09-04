@@ -94,6 +94,26 @@ def test_page_fetch_failure_does_not_fail_the_run(cfg: Config):
     assert _linked_from_verified_page(top, [top], cfg, provs) == []
 
 
+def test_linkedin_claim_kept_when_page_is_blocked(cfg: Config):
+    from facechain.pipeline import _linkedin_claim
+    from facechain.search.candidates import normalise_url
+
+    known = {normalise_url("https://www.instagram.com/jane")}
+    linked = _linkedin_claim("jane", known)
+    assert len(linked) == 1
+    assert linked[0].platform == "linkedin"
+    assert linked[0].origin == "linked"
+    assert any("linkedin.com/in/jane" in u for u in linked[0].urls)
+
+
+def test_linkedin_claim_not_duplicated_if_already_known(cfg: Config):
+    from facechain.pipeline import _linkedin_claim
+    from facechain.search.candidates import normalise_url
+
+    known = {normalise_url("https://www.linkedin.com/in/jane")}
+    assert _linkedin_claim("jane", known) == []
+
+
 def test_skips_enrichment_when_fetch_page_is_unset(cfg: Config):
     provs, _ = make_fake_providers([])
     top = ScoredCandidate(

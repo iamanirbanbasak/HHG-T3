@@ -467,6 +467,20 @@ def _run_job(job: Job, payload: dict) -> None:
             survivors.append((url, s.cosine))
         survivors.extend((s.candidate.page_url, s.cosine) for s in result.expanded)
         accounts = group_accounts(survivors)
+        linked = result.linked
+        by_key = {(a.platform, a.handle): a for a in accounts}
+        for extra in linked:
+            key = (extra.platform, extra.handle)
+            existing = by_key.get(key)
+            if existing is None:
+                accounts.append(extra)
+                by_key[key] = extra
+                continue
+            for u in extra.urls:
+                if u not in existing.urls:
+                    existing.urls.append(u)
+            if extra.profile_url and extra.profile_url not in existing.urls:
+                existing.urls.append(extra.profile_url)
         if result.resolved_handle:
             job.log(f"account  @{result.resolved_handle}  {result.resolved_profile}", "ok")
             post = result.top.candidate.page_url
@@ -497,7 +511,6 @@ def _run_job(job: Job, payload: dict) -> None:
                     "ok",
                 )
 
-        linked = result.linked
         if linked:
             job.log(
                 f"{len(linked)} profile(s) linked from the verified page "

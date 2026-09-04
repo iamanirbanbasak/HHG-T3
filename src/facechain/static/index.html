@@ -609,6 +609,24 @@ function render(r){
     }
   }
 
+  if(r.linked&&r.linked.length){
+    const lb=card('c-linked','Also listed (not face-scored)');
+    lb.appendChild(el('div','k-dim',
+      'Published or same-handle profile URLs. Not independently face-scored \u2014 including LinkedIn when the site blocks a scrape.'));
+    for(const a of r.linked){
+      const row=el('div','acct'), who=el('div');who.style.flex='1';who.style.minWidth='0';
+      who.appendChild(el('div','name',a.display));
+      const links=el('div','links'), seen=new Set();
+      const add=u=>{const h=safeUrl(u);if(!h||seen.has(h))return;seen.add(h);
+        const l=el('a',null,u);l.href=h;l.target='_blank';l.rel='noopener noreferrer';links.appendChild(l);};
+      if(a.profile_url) add(a.profile_url);
+      for(const u of a.urls||[]) add(u);
+      who.appendChild(links); row.appendChild(who);
+      row.appendChild(el('div','sc','linked'));
+      lb.appendChild(row);
+    }
+  }
+
   if(r.rows&&r.rows.length){
     const cb=card('c-cand','All candidates scored');
     const tb=el('table'), th=el('thead'), htr=el('tr');
